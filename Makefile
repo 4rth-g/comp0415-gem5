@@ -12,7 +12,7 @@
 #   make artigo     artigo/artigo.docx e artigo/artigo.pdf (Typst) no modelo da disciplina
 #   make tudo       bin + sim + varredura + visual + analise + artigo
 #
-# Reprodução (validação cruzada, na máquina da dupla):
+# Reprodução (em outra máquina, ou para conferir esta):
 #   make verificar  recompila do zero e confere com o bin/SHA256SUMS versionado
 #   make reproduzir simula tudo de novo e compara com as estatísticas versionadas
 #
@@ -77,7 +77,7 @@ visual: sim
 
 analise:
 	Rscript analise/relatorio.R
-	for d in analise/saida/sistema analise/fluxo; do n=$$(basename $$d); \
+	for d in analise/saida/sistema analise/saida/o3 analise/fluxo analise/gem5; do n=$$(basename $$d); \
 	  $(EM_CONTAINER) dot -Tpdf $$d.dot -o analise/saida/fig_$$n.pdf && \
 	  $(EM_CONTAINER) dot -Tpng -Gdpi=300 $$d.dot -o analise/saida/fig_$$n.png || exit 1; \
 	done

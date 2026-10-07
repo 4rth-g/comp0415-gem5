@@ -4,7 +4,7 @@ Trabalho da disciplina **Arquitetura de Computadores (COMP0415 — UFS)**: uso d
 simulador **gem5** para executar algoritmos básicos sobre a ISA **RISC-V** e
 observar métricas de microarquitetura (instruções, ciclos, IPC/CPI, cache).
 
-Ênfase em **reprodutibilidade**: a dupla usa sistemas diferentes, e todo o gem5
+Ênfase em **reprodutibilidade**: todo o gem5
 é compilado/executado dentro de um **container** idêntico, eliminando o "na
 minha máquina funciona".
 
@@ -98,7 +98,7 @@ make tudo                     # JOBS=n simulações em paralelo (padrão 4)
 `make sim` reaproveita execuções já feitas com as mesmas entradas (mesmo
 hash): com os resultados versionados, ele não simula nada de novo.
 
-### Validação cruzada (máquina da dupla)
+### Reprodução em outra máquina
 
 ```bash
 cd ~/src/gem5-build && ./build-gem5.sh       # Docker: ENGINE=docker ./build-gem5.sh

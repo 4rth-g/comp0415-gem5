@@ -1,0 +1,31 @@
+// gem5.dot — como o gem5 funciona (renderizado por `make analise` em
+// analise/saida/fig_gem5.pdf|png)
+digraph gem5 {
+  graph [rankdir=LR, fontname="Helvetica", nodesep=0.35, ranksep=0.45, compound=true];
+  node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=10,
+         color="#52514e", fillcolor="#f4f3ef"];
+  edge  [color="#52514e", arrowsize=0.7, fontname="Helvetica", fontsize=8,
+         fontcolor="#52514e"];
+
+  script [label="script de configuração\n(Python, se_run.py)\nplaca · processador ·\ncaches · memória", fillcolor="#fbe3d6"];
+  prog   [label="programa RISC-V\n(binário estático)", fillcolor="#fbe3d6"];
+
+  subgraph cluster_sim {
+    label="gem5 (núcleo em C++)"; labeljust=l; fontsize=9; fontcolor="#52514e";
+    style="rounded,dashed"; color="#86b6ef";
+    cpu  [label="SimObject\nCPU", fillcolor="#dbe8f8"];
+    mem  [label="SimObjects\ncaches · barramentos ·\ncontrolador de memória", fillcolor="#dbe8f8"];
+    ev   [label="fila de eventos\n(tempo em ticks de 1 ps)"];
+    se   [label="emulação de\nchamadas de sistema (SE)"];
+    cpu -> mem [label="portas\n(pacotes)", dir=both];
+    cpu -> ev [style=dashed, dir=both]; mem -> ev [style=dashed, dir=both];
+    cpu -> se [style=dashed];
+  }
+
+  out [label="saídas\nstats.txt · config.ini · config.dot", fillcolor="#e4e3df"];
+
+  script -> cpu [label="instancia e\nconecta", lhead=cluster_sim];
+  prog -> cpu [label="instruções"];
+  cpu -> script [label="m5_work_begin/end\n→ tratador (dump + reset)", style=dashed, constraint=false];
+  ev -> out [ltail=cluster_sim];
+}

@@ -191,8 +191,9 @@ if (n_distinct(d6$l1d_kib) > 1) {
 } else message("sem varredura de L1D (rode `make varredura`)")
 
 # 8) pipeline do o3, instrução por instrução (make visual) ----------------------
-FASES <- c("busca", "decodificação e renomeação", "fila de emissão",
-           "execução", "espera p/ confirmar")
+# fases nomeadas pelos estágios do o3 (termos usuais, em inglês)
+FASES <- c("fetch", "decode + rename", "dispatch até issue",
+           "execute + writeback", "aguarda commit")
 for (trace in Sys.glob("analise/saida/visual/*/gem5_o3/o3pipeview.txt")) {
   caso <- basename(dirname(dirname(trace)))           # ex.: soma_vetor_roi2
   pv <- ler_pipeview(trace)
@@ -218,7 +219,7 @@ for (trace in Sys.glob("analise/saida/visual/*/gem5_o3/o3pipeview.txt")) {
     scale_x_continuous(breaks = scales::breaks_width(2), expand = expansion(mult = 0.02)) +
     labs(x = "ciclo", y = NULL,
          title = paste0("Pipeline do o3, instrução por instrução (", str_replace(caso, "_roi", ", ROI "), ")"),
-         caption = "Cada linha é uma instrução confirmada, na ordem de busca; o círculo marca a confirmação (commit).") +
+         caption = "Cada linha é uma instrução confirmada, na ordem de fetch; o círculo marca o commit.") +
     guides(colour = guide_legend(nrow = 2)) +
     tema + theme(axis.text.y = element_text(family = "mono", size = 7),
                  legend.text = element_text(size = 8),
@@ -255,6 +256,60 @@ if (length(exec_soma)) {
     theme(plot.background = element_rect(fill = "#1e1f22", colour = "#1e1f22"))
   salvar(g9, "fig_terminal", w = 6.5, h = 0.155 * n + 0.3)
 }
+
+# 10) custo do detalhe: velocidade de simulação de cada modelo de CPU ----------
+#     instruções simuladas por segundo de tempo real, nas ROIs grandes (o 1º
+#     trecho de cada execução inclui a inicialização do próprio gem5)
+d10 <- base |> filter(roi > 0, instrucoes >= 1e5, tempo_host > 0) |>
+  mutate(taxa = instrucoes / tempo_host, cpu = factor(cpu, levels = rev(CPUS)))
+med10 <- d10 |> group_by(cpu) |> summarise(taxa = median(taxa), .groups = "drop")
+g10 <- ggplot(d10, aes(taxa, cpu, colour = cpu)) +
+  geom_point(size = 2, alpha = 0.5, position = position_jitter(height = 0.12, seed = 1)) +
+  geom_point(data = med10, shape = 124, size = 9, colour = TINTA) +
+  geom_label(data = med10, aes(label = paste0("mediana ", num()(taxa / 1000), " mil/s")),
+             colour = TINTA, nudge_y = 0.38, size = 2.6, linewidth = 0, fill = "white") +
+  scale_x_log10(labels = num(), expand = expansion(mult = 0.1)) +
+  scale_colour_manual(values = CORES_CPU, guide = "none") +
+  labs(x = "instruções simuladas por segundo (escala log; traço = mediana)", y = NULL,
+       title = "O custo do detalhe: velocidade de simulação de cada modelo de CPU",
+       caption = "Tempo real no computador hospedeiro: os valores mudam de máquina para máquina;\na ordem entre os modelos, não.") +
+  tema
+salvar(g10, "fig_velocidade", h = 3)
+
+# 11) menos instruções nem sempre é mais rápido: pares de versões -------------
+#     razão (2ª versão ÷ 1ª) de instruções e de ciclos em cada CPU com tempo
+PARES <- tribble(
+  ~programa,       ~n,  ~a,                        ~b,                        ~rotulo,
+  "ordenacao",     NA,  "bubble sort (aleatório)", "quicksort (aleatório)",   "quicksort ÷ bubble sort",
+  "busca_binaria", NA,  "busca linear",            "busca binária",           "busca binária ÷ linear",
+  "grafo",         NA,  "BFS na grade",            "BFS em grafo aleatório",  "BFS: grafo aleatório ÷ grade",
+  "fatorial",      NA,  "iterativo (2000×)",       "recursivo (2000×)",       "fatorial: recursivo ÷ iterativo",
+  "mdc",           NA,  "Euclides (resto)",        "binário (sem divisão)",   "MDC: binário ÷ Euclides",
+  "camada_densa",  64L, "ordem i-j-k",             "ordem i-k-j",             "matrizes (N=64): i-k-j ÷ i-j-k")
+razao <- function(prog, n_, a, b) {
+  d <- base |> filter(programa == prog, roi > 0, if (is.na(n_)) is.na(n) else n == n_)
+  ra <- d |> filter(regiao == a); rb <- d |> filter(regiao == b)
+  inner_join(ra, rb, by = "cpu", suffix = c("_a", "_b")) |>
+    transmute(cpu, instrucoes = instrucoes_b / instrucoes_a, ciclos = ciclos_b / ciclos_a)
+}
+d11 <- PARES |> mutate(r = pmap(list(programa, n, a, b), razao)) |> unnest(r) |>
+  mutate(rotulo = factor(rotulo, levels = rev(PARES$rotulo)))
+d11i <- d11 |> distinct(rotulo, instrucoes)
+d11c <- d11 |> filter(cpu != "atomic")
+g11 <- ggplot(d11c, aes(y = rotulo)) +
+  geom_vline(xintercept = 1, colour = TINTA2, linewidth = 0.4) +
+  geom_point(data = d11i, aes(x = instrucoes), shape = 23, size = 3.2,
+             fill = "white", colour = TINTA) +
+  geom_point(aes(x = ciclos, colour = cpu), size = 2.6,
+             position = position_dodge(width = 0.5)) +
+  scale_x_continuous(trans = "log10", labels = scales::label_number(big.mark = ".", decimal.mark = ","),
+                     breaks = c(0.01, 0.03, 0.1, 0.3, 1, 3)) +
+  scale_colour_manual(values = CORES_CPU, name = "ciclos no modelo:") +
+  labs(x = "razão 2ª versão ÷ 1ª (escala log; > 1 = a 2ª custa mais)", y = NULL,
+       title = "Uma versão do algoritmo em relação à outra",
+       subtitle = "losango = instruções (iguais em todo modelo); círculos = ciclos em cada modelo de CPU") +
+  tema + theme(panel.grid.major.y = element_blank())
+salvar(g11, "fig_versoes", h = 3.5)
 
 # ---- configuração do sistema simulado -----------------------------------------
 # lida do config.ini de uma execução de cada CPU (configuração-base)
@@ -326,6 +381,41 @@ writeLines(c(
   "  { rank=same; l1i; l1d; }",
   "  cpu -> l1i; cpu -> l1d; l1i -> l2bus; l1d -> l2bus; l2bus -> l2; l2 -> membus; membus -> dram;",
   "}"), file.path(DIR_OUT, "sistema.dot"))
+
+# diagrama do pipeline do o3 (Graphviz), com os tamanhos do config.ini
+estagio <- function(id, nome) sprintf('  %s [label="%s", fillcolor="#dbe8f8", group=pipe];', id, nome)
+writeLines(c(
+  "digraph o3 {",
+  "  graph [rankdir=LR, fontname=\"Helvetica\", nodesep=0.25, ranksep=0.3, newrank=true];",
+  "  node  [shape=box, style=\"rounded,filled\", fontname=\"Helvetica\", fontsize=10, color=\"#52514e\", fillcolor=\"#f4f3ef\"];",
+  "  edge  [color=\"#52514e\", arrowsize=0.6];",
+  estagio("fetch", "fetch"), estagio("decode", "decode"), estagio("rename", "rename"),
+  estagio("dispatch", "dispatch"), estagio("issue", "issue"), estagio("execute", "execute"),
+  estagio("wb", "writeback"), estagio("commit", "commit"),
+  "  fetch -> decode -> rename -> dispatch -> issue -> execute -> wb -> commit [weight=10];",
+  # acima da linha: preditor de desvios, fila de emissão, ROB
+  sprintf('  bp  [label="preditor de desvios\\n(%s)", fillcolor="#fbe3d6"];',
+          k(o3, paste0(CORE, ".branchPred.conditionalBranchPred"), "type")),
+  sprintf('  iq  [label="fila de emissão (IQ)\\n%s entradas", shape=box3d];',
+          k(o3, paste0(CORE, ".instQueues"), "numEntries")),
+  sprintf('  rob [label="reorder buffer (ROB)\\n%s entradas", shape=box3d];', k(o3, CORE, "numROBEntries")),
+  # abaixo da linha: L1I, unidades funcionais, LSQ, preditor de dependência, L1D
+  '  l1i [label="L1I"];',
+  '  ss  [label="preditor de dependência\\nde memória (store sets)", fillcolor="#fbe3d6"];',
+  '  fu  [label="unidades funcionais\\nALU · mul/div · FP"];',
+  sprintf('  lsq [label="fila de loads/stores\\nLQ %s · SQ %s", shape=box3d];',
+          k(o3, CORE, "LQEntries"), k(o3, CORE, "SQEntries")),
+  '  l1d [label="L1D"];',
+  "  bp -> fetch [style=dashed]; l1i -> fetch;",
+  "  iq -> issue [style=dashed, label=\" espera operandos\", fontsize=8, fontname=\"Helvetica\"];",
+  "  rob -> commit [style=dashed, label=\" ordem do programa\", fontsize=8, fontname=\"Helvetica\"];",
+  "  ss -> issue [style=dashed]; execute -> fu [dir=both, style=dashed];",
+  "  wb -> lsq [dir=both, style=dashed]; lsq -> l1d [dir=both];",
+  "  { rank=same; fetch; bp; l1i; } { rank=same; issue; iq; ss; }",
+  "  { rank=same; execute; fu; } { rank=same; wb; lsq; } { rank=same; commit; rob; l1d; }",
+  sprintf('  label="largura: %s instruções por ciclo em cada estágio"; labelloc=b; fontsize=9;',
+          k(o3, CORE, "fetchWidth")),
+  "}"), file.path(DIR_OUT, "o3.dot"))
 
 # ---- tabelas para o Word ----------------------------------------------------
 if (requireNamespace("flextable", quietly = TRUE)) {

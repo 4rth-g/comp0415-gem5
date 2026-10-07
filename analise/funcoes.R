@@ -24,6 +24,7 @@ C <- "board.cache_hierarchy."
 CONTADORES <- c(
   instrucoes      = "simInsts",
   ticks           = "simTicks",
+  tempo_host      = "hostSeconds",   # tempo real no computador hospedeiro
   ciclos          = paste0(P, "numCycles"),
   l1d_falhas      = paste0(C, "l1d-cache-0.overallMisses::total"),
   l1d_acessos     = paste0(C, "l1d-cache-0.overallAccesses::total"),

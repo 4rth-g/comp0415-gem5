@@ -97,6 +97,9 @@ cabecalho <- function() {
 }
 
 # no Fibonacci não há nada além das duas ROIs: o resto é inicialização e saída
+vel <- base |> filter(roi > 0, instrucoes >= 1e5, tempo_host > 0) |>
+  group_by(cpu) |> summarise(t = median(instrucoes / tempo_host)) |>
+  (\(d) setNames(d$t, d$cpu))()
 fora_fib <- v("fibonacci", "programa inteiro", "atomic", "instrucoes") -
   v("fibonacci", "recursivo", "atomic", "instrucoes") -
   v("fibonacci", "iterativo (2000×)", "atomic", "instrucoes")
@@ -184,14 +187,54 @@ O gem5 foi escolhido por ser o único da tabela que combina RISC-V, vários mode
 
 ## 2.2 Como o gem5 funciona
 
-O gem5 é um simulador **orientado a eventos**: cada componente agenda eventos para instantes futuros, medidos em *ticks* de 1 ps, e o núcleo do simulador os processa em ordem. Os componentes são *SimObjects* — processadores, caches, barramentos, controladores de memória — escritos em C++ e conectados por portas que trocam pacotes de memória. A montagem do sistema é feita em **Python**: um script instancia os SimObjects, define seus parâmetros e os conecta [@binkert2011gem5; @lowepower2020gem5v20].
+O gem5 é um simulador **orientado a eventos**: cada componente agenda eventos para instantes futuros, medidos em *ticks* de 1 ps, e o núcleo do simulador os processa em ordem. Os componentes são *SimObjects* — processadores, caches, barramentos, controladores de memória — escritos em C++ e conectados por portas que trocam pacotes de memória. A montagem do sistema é feita em **Python**: um script instancia os SimObjects, define seus parâmetros e os conecta [@binkert2011gem5; @lowepower2020gem5v20]. A @fig-gem5 resume essa organização.
+
+```{r}
+#| results: asis
+largo()
+```
+
+![Organização do gem5: o script de configuração em Python instancia e conecta os componentes (SimObjects) do núcleo em C++; a fila de eventos avança o tempo simulado; no modo SE, as chamadas de sistema do programa são atendidas pelo próprio simulador.](`r fig("fig_gem5")`){#fig-gem5 width=95%}
+
+```{r}
+#| results: asis
+estreito()
+```
 
 Para o processador, o gem5 oferece modelos com níveis crescentes de detalhe, que executam exatamente as mesmas instruções:
 
 - **AtomicSimpleCPU** (*atomic*): funcional; cada acesso à memória termina na hora e o tempo é só estimado;
 - **TimingSimpleCPU** (*timing*): executa uma instrução por vez, mas espera cada acesso à memória atravessar caches e barramentos;
-- **MinorCPU** (*minor*): pipeline em ordem, com estágios de busca, decodificação e execução;
+- **MinorCPU** (*minor*): pipeline em ordem, com estágios de *fetch*, *decode* e *execute*;
 - **O3CPU** (*o3*): superescalar fora de ordem, com renomeação de registradores, *reorder buffer* (ROB) e execução especulativa.
+
+O detalhe tem custo: quanto mais o modelo simula por ciclo, mais lenta é a simulação. A @fig-velocidade mostra quantas instruções cada modelo simulou por segundo de tempo real nas regiões de interesse deste trabalho: o atomic é cerca de `r round(vel["atomic"] / vel["o3"])` vezes mais rápido que o o3. Na prática, o atomic serve para rodar programas até o ponto de interesse, e os modelos detalhados, para medir.
+
+```{r}
+#| results: asis
+largo()
+```
+
+![Velocidade de simulação de cada modelo de CPU, em instruções simuladas por segundo, nas regiões de interesse com mais de 100 mil instruções.](`r fig("fig_velocidade")`){#fig-velocidade width=80%}
+
+```{r}
+#| results: asis
+estreito()
+```
+
+O o3 é o modelo mais completo, e os resultados da Seção 4 dependem de sua estrutura (@fig-o3). Cada instrução passa pelos estágios de *fetch* (busca, guiada pelo preditor de desvios), *decode*, *rename* (troca dos registradores da ISA por registradores físicos, eliminando dependências falsas) e *dispatch*, que a coloca na fila de emissão (IQ) e no *reorder buffer* (ROB). Na *issue*, a instrução sai da fila assim que seus operandos estão prontos, fora da ordem do programa, e segue para *execute* e *writeback*; o *commit* confirma as instruções na ordem original, a partir do ROB. Leituras e escritas na memória (*loads* e *stores*) passam por uma fila própria (LSQ), e um segundo preditor decide se um *load* pode ser executado antes de *stores* anteriores cujo endereço ainda não se conhece.
+
+```{r}
+#| results: asis
+largo()
+```
+
+![Pipeline do processador o3 simulado, com os tamanhos das estruturas lidos do `config.ini`. Estágios em inglês, como na documentação do gem5.](`r fig("fig_o3")`){#fig-o3 width=95%}
+
+```{r}
+#| results: asis
+estreito()
+```
 
 A memória pode usar o sistema "clássico", com caches de coerência simplificada, ou o Ruby, que modela protocolos de coerência detalhados. Versões recentes oferecem a *Standard Library* do gem5, com componentes prontos — placa, processador, hierarquia de caches e memória — que se combinam em poucas linhas de Python [@lowepower2026learning]. O programa simulado pode se comunicar com o simulador por instruções especiais, que o gem5 trata como eventos para os quais o script de configuração registra tratadores [@pai2026gem5]; este trabalho usa esse mecanismo para delimitar as regiões medidas (Seção 3.4).
 
@@ -201,7 +244,7 @@ Ao final de uma simulação, o gem5 grava na pasta de saída: o `stats.txt`, com
 
 ## 3.1 Instalação reprodutível
 
-O trabalho foi feito em dupla, em computadores com sistemas diferentes — CachyOS com Podman e Ubuntu com Docker. Para que os dois obtenham o *mesmo* simulador e os *mesmos* resultados, todo o processo roda dentro de um container, com cada versão fixada [@bruce2021gem5art; @pai2026gem5; @malka2024nix; @hausch2025nix]:
+Para que qualquer pessoa obtenha o *mesmo* simulador e os *mesmos* resultados, independentemente do sistema operacional, todo o processo roda dentro de um container, com cada versão fixada [@bruce2021gem5art; @pai2026gem5; @malka2024nix; @hausch2025nix]:
 
 - **gem5 25.1.0.1**, compilado de um *commit* fixo do repositório oficial (`f5c5a6e`);
 - **imagem base** oficial do gem5 com as dependências de compilação, referenciada pelo *digest* SHA-256, e não por uma etiqueta que muda com o tempo;
@@ -223,7 +266,7 @@ estreito()
 ```
 
 
-A reprodutibilidade foi verificada, não apenas planejada. Cada simulação recebe um *hash* calculado a partir do binário, do script de configuração, do *commit* do gem5, do modelo de CPU e dos parâmetros; como o gem5 é determinístico, simulações com o mesmo hash devem produzir o mesmo `stats.txt`. Construindo a imagem e recompilando os exemplos com dois motores de container diferentes (Podman e Docker), os binários saíram idênticos bit a bit, e simulações refeitas com o Docker produziram estatísticas idênticas às do Podman, exceto as linhas que medem o próprio computador hospedeiro (tempo e memória). [PENDENTE: resultado do `make reproduzir` na máquina Ubuntu do(a) colega.]
+A reprodutibilidade foi verificada, não apenas planejada. Cada simulação recebe um *hash* calculado a partir do binário, do script de configuração, do *commit* do gem5, do modelo de CPU e dos parâmetros; como o gem5 é determinístico, simulações com o mesmo hash devem produzir o mesmo `stats.txt`. Construindo a imagem e recompilando os exemplos com dois motores de container diferentes (Podman e Docker), os binários saíram idênticos bit a bit, e simulações refeitas com o Docker produziram estatísticas idênticas às do Podman, exceto as linhas que medem o próprio computador hospedeiro (tempo e memória).
 
 ## 3.2 Arquitetura configurada
 
@@ -350,14 +393,14 @@ loop: c.lw   a5, 0(s0)   # carrega v[i]
       bne    s0, s1, loop
 ```
 
-Para ver como o processador fora de ordem executa esse laço, o gem5 pode registrar o instante em que cada instrução passa por cada estágio do pipeline. A @fig-pipeline mostra 16 instruções em regime permanente: a cada ciclo, quatro instruções novas são buscadas e, alguns ciclos depois, quatro são confirmadas — uma volta do laço por ciclo, o que dá IPC próximo de 4. Esse tipo de visualização, construída a partir do registro do gem5, substitui a "tela" que o simulador não tem.
+Para ver como o processador fora de ordem executa esse laço, o gem5 pode registrar o instante em que cada instrução passa por cada estágio do pipeline. A @fig-pipeline mostra 16 instruções em regime permanente: a cada ciclo, quatro instruções novas passam pelo *fetch* e, alguns ciclos depois, quatro passam pelo *commit* — uma volta do laço por ciclo, o que dá IPC próximo de 4. Esse tipo de visualização, construída a partir do registro do gem5, substitui a "tela" que o simulador não tem.
 
 ```{r}
 #| results: asis
 largo()
 ```
 
-![Pipeline do processador o3 executando o laço da soma de vetor, instrução por instrução. Cada barra mostra o tempo que a instrução passou em cada etapa; o círculo marca a confirmação (*commit*).](`r fig("fig_pipeline_soma_vetor_roi2")`){#fig-pipeline width=95%}
+![Pipeline do processador o3 executando o laço da soma de vetor, instrução por instrução. Cada barra mostra o tempo que a instrução passou em cada etapa; o círculo marca o *commit*.](`r fig("fig_pipeline_soma_vetor_roi2")`){#fig-pipeline width=95%}
 
 ```{r}
 #| results: asis
@@ -438,7 +481,7 @@ estreito()
 ```
 
 
-A explicação está em um mecanismo do processador fora de ordem: a **predição de dependências de memória**. Para executar leituras antes de escritas anteriores, o o3 precisa adivinhar se elas acessam o mesmo endereço; o gem5 implementa o preditor *store sets* [@chrysos1998storesets], que aprende quais leituras dependem de quais escritas. Na i-k-j, a leitura de Y[i][j] depende, de fato, da escrita feita alguns ciclos antes; o preditor aprende isso e passa a reter cada leitura até a escrita terminar — `r mil(cd("ordem i-k-j", "o3", "cargas_retidas"))` leituras retidas na ROI —, serializando o laço. A i-j-k acumula em registrador, sem esse padrão; suas faltas na cache são em boa parte escondidas pela execução fora de ordem.
+A explicação está em um mecanismo do processador fora de ordem: a **predição de dependências de memória** (@fig-o3). Quando um *load* aparece depois de um *store* cujo endereço ainda não foi calculado, o processador tem duas opções: esperar (seguro, mas lento) ou arriscar e executar o *load* antes (rápido, mas, se os endereços coincidirem, o resultado está errado e o trabalho é descartado). Para escolher, o o3 precisa adivinhar se os dois acessam o mesmo endereço; o gem5 implementa o preditor *store sets* [@chrysos1998storesets], que aprende quais leituras dependem de quais escritas. Na i-k-j, a leitura de Y[i][j] depende, de fato, da escrita feita alguns ciclos antes; o preditor aprende isso e passa a reter cada leitura até a escrita terminar — `r mil(cd("ordem i-k-j", "o3", "cargas_retidas"))` leituras retidas na ROI —, serializando o laço. A i-j-k acumula em registrador, sem esse padrão; suas faltas na cache são em boa parte escondidas pela execução fora de ordem.
 
 O terceiro laço funciona como experimento de controle: mantém o mesmo padrão de acesso à cache da i-k-j, mas grava Y quatro vezes menos. As leituras retidas caem para `r mil(cd("ordem i-k-j (4 k por vez)", "o3", "cargas_retidas"))` e o custo cai de `r f(cd("ordem i-k-j", "o3", "ciclos_por_mac"))` para `r f(cd("ordem i-k-j (4 k por vez)", "o3", "ciclos_por_mac"))` ciclos por multiplicação-acumulação, praticamente sem mudar as faltas de cache (`r mil(cd("ordem i-k-j", "o3", "l1d_falhas"))` contra `r mil(cd("ordem i-k-j (4 k por vez)", "o3", "l1d_falhas"))`). As Figuras [-@fig-camada] e [-@fig-varredura] completam o quadro: variando N, as faltas da i-j-k disparam quando as matrizes deixam de caber na L1; variando o tamanho da L1, o custo da i-j-k cai a partir de 32 KiB, enquanto o da i-k-j não muda, porque não é a cache que a limita.
 
@@ -470,6 +513,20 @@ estreito()
 ## 4.8 Visão geral: o mesmo programa em microarquiteturas diferentes
 
 A @fig-ipc reúne o IPC de todas as ROIs nos três modelos de CPU que medem tempo. Em cada linha, o número de instruções é o mesmo; só muda a microarquitetura. O timing, que espera cada acesso à memória, fica abaixo de 1 em todos os casos. O minor, com pipeline em ordem, ganha onde há pouca dependência entre instruções, mas perde quando o preditor erra (quicksort, busca binária, MDC binário). O o3 chega a IPC de 3 a 5 quando há paralelismo entre instruções e cai para perto de 1 — ou menos, no MDC de Euclides — quando os desvios são imprevisíveis, os dados não estão na cache ou cada instrução espera uma operação longa. É exatamente o tipo de comparação que um simulador funcional não consegue fazer.
+
+A @fig-versoes junta as comparações entre versões das Seções 4.2 a 4.7. O losango mostra a razão de instruções entre as duas versões, que não depende do modelo de CPU; os círculos, a razão de ciclos em cada modelo. Quando os círculos se afastam do losango, a microarquitetura está pesando: na busca binária e no quicksort, os erros de predição comem parte da economia de instruções; na BFS, mesmo número de instruções e mais que o dobro de ciclos no o3; e no MDC e na multiplicação de matrizes, o o3 inverte a conclusão dos modelos mais simples.
+
+```{r}
+#| results: asis
+largo()
+```
+
+![Razão entre duas versões de cada algoritmo: instruções (losango) e ciclos em cada modelo de CPU (círculos). Valores acima de 1 indicam que a segunda versão custa mais.](`r fig("fig_versoes")`){#fig-versoes width=95%}
+
+```{r}
+#| results: asis
+estreito()
+```
 
 ```{r}
 #| results: asis
