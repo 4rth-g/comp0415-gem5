@@ -1,0 +1,24 @@
+# Binários compilados dos exemplos (regeneráveis com `make bin`);
+# o SHA256SUMS é versionado para conferir a reprodução (`make verificar`)
+bin/*
+!bin/SHA256SUMS
+
+# Saídas de simulação: versiona só o que registra a execução
+# (meta.json, stats.txt.gz, config.ini.gz, simout.txt); o resto é regenerável
+resultados/*/*
+!resultados/*/meta.json
+!resultados/*/stats.txt.gz
+!resultados/*/config.ini.gz
+!resultados/*/simout.txt
+
+# Saída do relatorio.R (regenerável com `make analise`)
+analise/saida/
+
+# R
+.Rhistory
+.Rproj.user/
+
+# Artefatos locais
+__pycache__/
+*.o
+*.pyc
