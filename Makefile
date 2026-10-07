@@ -9,7 +9,7 @@
 #   make visual     pipeline do o3, trace RISC-V e assembly de uma ROI da soma
 #   make analise    tabelas, gráficos e diagrama do sistema (analise/)
 #   make testar     testes do parser de estatísticas (analise/testes.R)
-#   make artigo     artigo/artigo.docx no modelo da disciplina (Quarto)
+#   make artigo     artigo/artigo.docx e artigo/artigo.pdf (Typst) no modelo da disciplina
 #   make tudo       bin + sim + varredura + visual + analise + artigo
 #
 # Reprodução (validação cruzada, na máquina da dupla):
@@ -85,6 +85,7 @@ analise:
 artigo:
 	python3 artigo/preparar_modelo.py
 	quarto render artigo/artigo.qmd --to docx
+	quarto render artigo/artigo.qmd --to typst
 
 testar:
 	Rscript analise/testes.R

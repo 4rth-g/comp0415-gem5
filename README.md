@@ -57,6 +57,8 @@ artigo/
   preparar_modelo.py   # modelo.docx -> referencia.docx (reference-doc do Quarto)
   referencias.bib      # referências conferidas (Crossref/DataCite); ZOTERO.md, zotero_novos.bib
   abnt-numerico.csl    # estilo ABNT numérico, citação entre colchetes como no modelo
+  typst/               # modelo Typst equivalente (PDF): 2 colunas, Times, página Carta
+_quarto.yml            # projeto Quarto mínimo (raiz do Typst = raiz do repo)
 renv.lock              # versões exatas dos pacotes R (snapshot Posit PM de 25/09/2026)
 bin/SHA256SUMS         # hashes dos binários RISC-V — referência para `make verificar`
 resultados/            # execuções das entradas atuais (as antigas ficam no histórico do git)
@@ -90,7 +92,7 @@ make testar                   # testes do parser de estatísticas
 make tudo                     # JOBS=n simulações em paralelo (padrão 4)
 #    -> analise/saida/: metricas.csv, mix.csv, configuracao.csv,
 #       tabela_*.docx, fig_*.pdf|png
-#    -> artigo/artigo.docx (requer Quarto)
+#    -> artigo/artigo.docx e artigo/artigo.pdf (Typst) — requer Quarto
 ```
 
 `make sim` reaproveita execuções já feitas com as mesmas entradas (mesmo

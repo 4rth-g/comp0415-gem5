@@ -1,0 +1,6 @@
+# Projeto Quarto mínimo: faz da raiz do repositório a raiz do Typst, para o
+# artigo (artigo/artigo.qmd) poder ler as figuras em analise/saida/
+project:
+  type: default
+  render:
+    - artigo/artigo.qmd

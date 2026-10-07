@@ -16,6 +16,9 @@ analise/saida/
 
 # Artigo: gerado por `make artigo`
 artigo/artigo.docx
+artigo/artigo.pdf
+artigo/artigo.typ
+.~lock.*#
 artigo/referencia.docx
 artigo/.quarto/
 artigo/*_files/
@@ -31,3 +34,6 @@ __pycache__/
 build/
 # configuração local de editor (clangd)
 exemplos/compile_flags.txt
+
+/.quarto/
+**/*.quarto_ipynb

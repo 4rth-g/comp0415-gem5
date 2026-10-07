@@ -4,6 +4,11 @@ format:
   docx:
     reference-doc: referencia.docx
     fig-dpi: 300
+  typst:
+    template-partials:
+      - typst/typst-template.typ
+      - typst/typst-show.typ
+    citeproc: true
 bibliography: referencias.bib
 csl: abnt-numerico.csl
 execute:
@@ -46,9 +51,50 @@ quebra <- function(colunas) {
 }
 largo   <- function() quebra(2)   # começa um bloco largo (encerra as 2 colunas)
 estreito <- function() quebra(1)  # volta às 2 colunas (encerra o bloco largo)
-tabela <- function(df, larguras) flextable::flextable(df) |>
-  flextable::theme_booktabs() |> flextable::fontsize(size = 9, part = "all") |>
-  flextable::width(width = larguras) |> flextable::align(align = "left", part = "all")
+# tabelas: flextable no .docx (larguras de coluna explícitas), kable no Typst
+SAIDA_FMT <- knitr::pandoc_to()
+tabela <- function(df, larguras, mesclar = FALSE, direita = NULL) {
+  if (!identical(SAIDA_FMT, "docx")) {
+    # Typst: tabela markdown; o comprimento dos traços da linha separadora dá
+    # ao pandoc a largura relativa de cada coluna
+    alin <- ifelse(seq_along(df) %in% direita, "r", "l")
+    k <- kable(df, format = "pipe", align = alin)
+    tracos <- pmax(3, round(60 * larguras / sum(larguras)))
+    k[2] <- paste0("|", paste0(ifelse(alin == "r", paste0(strrep("-", tracos - 1), ":"),
+                                      paste0(":", strrep("-", tracos - 1))), collapse = "|"), "|")
+    return(k)
+  }
+  ft <- flextable::flextable(df) |>
+    flextable::theme_booktabs() |> flextable::fontsize(size = 9, part = "all") |>
+    flextable::width(width = larguras) |> flextable::align(align = "left", part = "all")
+  if (mesclar) ft <- flextable::merge_v(ft, j = 1)
+  if (!is.null(direita)) ft <- flextable::align(ft, j = direita, align = "right", part = "all")
+  ft
+}
+
+# bloco de título, nos estilos do modelo (.docx) ou como bloco Typst que
+# ocupa a largura das duas colunas
+TITULO    <- "Simulação Arquitetural com o gem5 sobre RISC-V: Instalação Reprodutível e Exemplos Básicos, de Algoritmos Clássicos a Redes Neurais"
+AUTORES   <- "Arthur [SOBRENOME], [NOME DO(A) COLEGA]"
+AFILIACAO <- "Departamento de Computação (DCOMP), Universidade Federal de Sergipe – UFS"
+EMAILS    <- "[e-mail 1], [e-mail 2]"
+cabecalho <- function() {
+  if (identical(SAIDA_FMT, "typst")) {
+    esc <- function(x) gsub("([][#$*_@<>`\\])", "\\\\\\1", x)
+    cat("```{=typst}\n",
+        "#place(top, float: true, scope: \"parent\", clearance: 1.6em)[\n",
+        "#set par(first-line-indent: 0pt, justify: false)\n#align(center)[\n",
+        "#text(size: 14pt, weight: \"bold\")[", esc(TITULO), "]\n\n#v(0.3em)\n",
+        "#text(size: 12pt)[", esc(AUTORES), "]\n\n",
+        "#text(size: 12pt, style: \"italic\")[", esc(AFILIACAO), "]\n\n",
+        "#text(size: 12pt, style: \"italic\")[", esc(EMAILS), "]\n]]\n```\n\n", sep = "")
+  } else {
+    for (x in list(c("Title", TITULO), c("Author", AUTORES),
+                   c("Affiliation", AFILIACAO), c("Affiliation", EMAILS)))
+      cat('::: {custom-style="', x[1], '"}\n', x[2], '\n:::\n\n', sep = "")
+    quebra(1)
+  }
+}
 
 # no Fibonacci não há nada além das duas ROIs: o resto é inicialização e saída
 fora_fib <- v("fibonacci", "programa inteiro", "atomic", "instrucoes") -
@@ -70,34 +116,29 @@ fp <- mix |> filter(cpu == "atomic", roi > 0, programa %in% c("regressao_linear"
   group_by(programa) |> summarise(fp = sum(qtd[grupo == "ponto flutuante"]) / sum(qtd))
 ```
 
-::: {custom-style="Title"}
-Simulação Arquitetural com o gem5 sobre RISC-V: Instalação Reprodutível e Exemplos Básicos, de Algoritmos Clássicos a Redes Neurais
-:::
-
-::: {custom-style="Author"}
-Arthur [SOBRENOME], [NOME DO(A) COLEGA]
-:::
-
-::: {custom-style="Affiliation"}
-Departamento de Computação (DCOMP), Universidade Federal de Sergipe – UFS
-:::
-
-::: {custom-style="Affiliation"}
-[e-mail 1], [e-mail 2]
-:::
-
 ```{r}
 #| results: asis
-estreito()
+cabecalho()
 ```
 
+::: {.content-visible when-format="docx"}
 ::: {custom-style="Abstract Title"}
 Resumo
 :::
+:::
+
+```{=typst}
+#align(center, text(size: 12pt, weight: "bold")[Resumo])
+#[#set text(style: "italic")
+```
 
 ::: {custom-style="Abstract Text"}
 Este artigo apresenta o gem5, simulador de arquitetura de computadores de código aberto, e o seu uso para executar algoritmos básicos sobre a ISA RISC-V. Após situar o gem5 entre outros simuladores, descrevemos uma instalação reprodutível: o simulador, o compilador cruzado e as bibliotecas ficam fixados em um container, e uma mesma simulação produz estatísticas idênticas com motores de container diferentes. Onze programas — oito algoritmos clássicos de programação (soma, ordenação, busca, busca em grafo, Fibonacci, fatorial, máximo divisor comum e multiplicação de matrizes) e três exemplos de redes neurais — foram executados em quatro modelos de processador do gem5, medindo apenas as regiões de interesse de cada algoritmo. Os exemplos mostram o que um simulador revela e um computador real esconde: o mesmo código roda com IPC de `r f(v("fibonacci", "recursivo", "timing", "ipc"))` a `r f(v("fibonacci", "recursivo", "o3", "ipc"))` conforme a microarquitetura; um algoritmo com menos instruções pode ser mais lento, por depender de divisões; e, na multiplicação de matrizes, a ordem de laço que melhor usa a cache é a mais lenta no processador fora de ordem, por causa da predição de dependências de memória. Link do vídeo: [LINK DO VÍDEO — até 10 minutos].
 :::
+
+```{=typst}
+]
+```
 
 # 1. Introdução
 
@@ -215,7 +256,7 @@ largo()
 #| label: tbl-configuracao
 #| tbl-cap: "Configuração do sistema simulado (extraída do config.ini do gem5)"
 read_csv(file.path(SAIDA, "configuracao.csv"), show_col_types = FALSE) |>
-  tabela(c(1.0, 1.3, 4.0)) |> flextable::merge_v(j = 1)
+  tabela(c(1.0, 1.3, 4.0), mesclar = TRUE)
 ```
 
 ```{r}
@@ -388,8 +429,7 @@ tibble(
   `Cargas retidas (o3)` = mil(sapply(regs, cd, "o3", "cargas_retidas")),
   `Ciclos / mult.-acum. (o3)` = f(sapply(regs, cd, "o3", "ciclos_por_mac")),
   `Ciclos / mult.-acum. (timing)` = f(sapply(regs, cd, "timing", "ciclos_por_mac"), 1)
-) |> tabela(c(1.4, 1.3, 1.2, 1.3, 1.3)) |>
-  flextable::align(j = 2:5, align = "right", part = "all")
+) |> tabela(c(1.4, 1.3, 1.2, 1.3, 1.3), direita = 2:5)
 ```
 
 ```{r}
