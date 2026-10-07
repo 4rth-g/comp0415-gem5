@@ -4,7 +4,6 @@
 #
 # Uso: ./simular.sh <binario_riscv> [atomic|timing|minor|o3]
 #                   [--l1d 32KiB] [--l1i 32KiB] [--l2 256KiB] [--clk 1GHz]
-#                   [--ssclear 250000]
 #
 # Hash = sha256 de (binário + se_run.py + commit do gem5 + CPU + parâmetros):
 # mesmas entradas => mesmo hash. O ID da imagem fica só no meta.json: ele
@@ -26,7 +25,7 @@ REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$REPO_DIR/ambiente.sh"
 GEM5_DIR="${GEM5_DIR:-$REPO_DIR/../gem5-build/gem5}"
 CONFIG="configs_local/se_run.py"
-USO="uso: $0 <binario_riscv> [atomic|timing|minor|o3] [--l1d T] [--l1i T] [--l2 T] [--clk F] [--ssclear N]"
+USO="uso: $0 <binario_riscv> [atomic|timing|minor|o3] [--l1d T] [--l1i T] [--l2 T] [--clk F]"
 
 BIN="${1:?$USO}"; shift
 CPU="timing"
@@ -35,8 +34,8 @@ case "$CPU" in atomic|timing|minor|o3) ;; *) echo "CPU inválida: $CPU" >&2; exi
 
 # parâmetros: os padrões são os mesmos de se_run.py e sempre entram no hash,
 # para que "omitido" e "explícito com o valor padrão" deem o mesmo hash
-CHAVES=(l1d l1i l2 clk ssclear)
-declare -A PADRAO=([l1d]=32KiB [l1i]=32KiB [l2]=256KiB [clk]=1GHz [ssclear]=250000)
+CHAVES=(l1d l1i l2 clk)
+declare -A PADRAO=([l1d]=32KiB [l1i]=32KiB [l2]=256KiB [clk]=1GHz)
 declare -A PAR
 for k in "${CHAVES[@]}"; do PAR[$k]="${PADRAO[$k]}"; done
 while [ $# -gt 0 ]; do

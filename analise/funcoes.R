@@ -17,8 +17,7 @@ suppressPackageStartupMessages({
 })
 
 CPUS <- c("atomic", "timing", "minor", "o3")
-BASE <- list(l1d = "32KiB", l1i = "32KiB", l2 = "256KiB", clk = "1GHz",
-             ssclear = "250000")
+BASE <- list(l1d = "32KiB", l1i = "32KiB", l2 = "256KiB", clk = "1GHz")
 
 P <- "board.processor.cores.core."
 C <- "board.cache_hierarchy."
@@ -35,10 +34,8 @@ CONTADORES <- c(
   desvios         = paste0(P, "branchPred.condPredicted"),   # só minor e o3
   desvios_errados = paste0(P, "branchPred.condIncorrect"),
   # o3: cargas que o preditor de dependência de memória (store sets) segurou
-  # até uma escrita anterior terminar, e cargas que furaram a ordem e
-  # obrigaram a descartar instruções
-  cargas_retidas  = paste0(P, "MemDepUnit__0.conflictingLoads"),
-  violacoes_ordem = paste0(P, "iew.memOrderViolationEvents")
+  # até uma escrita anterior terminar
+  cargas_retidas  = paste0(P, "MemDepUnit__0.conflictingLoads")
 )
 PREFIXO_MIX <- paste0(P, "commitStats0.committedInstType::")
 
@@ -109,8 +106,8 @@ derivar <- function(df) df |> mutate(
 # ---- resultados/ --------------------------------------------------------------
 
 # Válida = gerada pelas entradas ATUAIS: binário listado no bin/SHA256SUMS e
-# se_run.py igual ao do repositório. Execuções antigas ficam em
-# resultados/legado/ (make arquivar), rastreáveis pelo meta.json.
+# se_run.py igual ao do repositório. Execuções de entradas antigas são
+# ignoradas (e podem ser apagadas: continuam no histórico do git).
 execucoes_validas <- function(dir_res = "resultados", sha256sums = "bin/SHA256SUMS",
                               config = "configs_local/se_run.py") {
   sha_bins <- read_table(sha256sums, col_names = c("sha", "arquivo"),
@@ -118,7 +115,6 @@ execucoes_validas <- function(dir_res = "resultados", sha256sums = "bin/SHA256SU
   sha_cfg  <- str_extract(system2("sha256sum", config, stdout = TRUE), "^\\S+")
   metas <- list.files(dir_res, pattern = "^meta\\.json$", recursive = TRUE,
                       full.names = TRUE)
-  metas <- metas[!str_detect(metas, "/legado/")]
   valida <- map_lgl(metas, function(arq) {
     m <- fromJSON(arq)
     !is.null(m$parametros) && m$binario_sha256 %in% sha_bins &&
@@ -126,7 +122,7 @@ execucoes_validas <- function(dir_res = "resultados", sha256sums = "bin/SHA256SU
   })
   if (any(!valida))
     message("ignorando ", sum(!valida), " execução(ões) de entradas antigas ",
-            "(rode `make arquivar` para movê-las para resultados/legado/)")
+            "(binário ou se_run.py diferentes dos atuais)")
   dirname(metas[valida])
 }
 
@@ -139,7 +135,7 @@ ler_execucao <- function(dir) {
                  programa = str_remove(nome, "_N\\d+$"),
                  n = as.integer(str_match(nome, "_N(\\d+)$")[, 2]),
                  cpu = m$cpu, l1d = par$l1d, l1i = par$l1i, l2 = par$l2,
-                 clk = par$clk, ssclear = par$ssclear,
+                 clk = par$clk,
                  hash = m$hash, timestamp = m$timestamp)
   list(cont = cross_join(id, seg$cont), mix = cross_join(id, seg$mix))
 }
@@ -168,8 +164,7 @@ ler_tudo <- function(dirs, regioes) {
 }
 
 na_base <- function(df) df |>
-  filter(l1d == BASE$l1d, l1i == BASE$l1i, l2 == BASE$l2, clk == BASE$clk,
-         ssclear == BASE$ssclear)
+  filter(l1d == BASE$l1d, l1i == BASE$l1i, l2 == BASE$l2, clk == BASE$clk)
 
 # ---- config.ini ------------------------------------------------------------------
 

@@ -28,7 +28,6 @@ mix   <- lido$mix
 write_csv(dados, file.path(DIR_OUT, "metricas.csv"))
 write_csv(mix, file.path(DIR_OUT, "mix.csv"))
 
-CLASSICOS <- c("soma_vetor", "bubble_sort", "busca_binaria", "fibonacci")
 base  <- na_base(dados)
 # visão geral: da camada densa, só o tamanho N = 64
 geral <- base |> filter(is.na(n) | n == 64) |>
@@ -85,26 +84,24 @@ g1 <- ggplot(d1, aes(instrucoes, rotulo)) +
   tema
 salvar(g1, "fig_instrucoes", h = 3.2)
 
-# 2) IPC por modelo de CPU, em cada ROI ----------------------------------------
+# 2) IPC de cada ROI em cada modelo de CPU: mapa de calor --------------------
 #    sem o atomic: é um modelo funcional, seus "ciclos" não medem tempo
-g_ipc <- function(d, titulo) {
-  ggplot(d, aes(cpu, ipc, fill = cpu)) +
-    geom_col(width = 0.75, colour = "white", linewidth = 0.4) +
-    geom_text(aes(label = num(0.01)(ipc)), vjust = -0.4, size = 2.3, colour = TINTA2) +
-    facet_wrap(~rotulo_roi, ncol = 4, labeller = label_wrap_gen(24)) +
-    scale_fill_manual(values = CORES_CPU, guide = "none") +
-    scale_y_continuous(labels = num(0.1), expand = expansion(mult = c(0, 0.18))) +
-    labs(x = "modelo de CPU", y = "IPC (instruções por ciclo)", title = titulo) +
-    tema + theme(panel.grid.major.x = element_blank(),
-                 strip.text = element_text(size = 7, lineheight = 0.9))
-}
-sem_atomic <- rois |> filter(cpu != "atomic", regiao != "ROI vazia") |> droplevels()
-salvar(g_ipc(filter(sem_atomic, programa %in% CLASSICOS),
-             "IPC por modelo de CPU: algoritmos clássicos"),
-       "fig_ipc_classicos", h = 4.6)
-salvar(g_ipc(filter(sem_atomic, !programa %in% CLASSICOS),
-             "IPC por modelo de CPU: redes neurais e camada densa"),
-       "fig_ipc_redes", h = 2.6)
+d2 <- rois |> filter(cpu != "atomic", regiao != "ROI vazia") |> droplevels() |>
+  mutate(rotulo_roi = factor(rotulo_roi, levels = rev(levels(rotulo_roi))))
+g2 <- ggplot(d2, aes(cpu, rotulo_roi, fill = ipc)) +
+  geom_tile(colour = "white", linewidth = 1.2) +
+  geom_text(aes(label = num(0.01)(ipc), colour = ipc > 2.6), size = 3) +
+  scale_fill_gradient(low = "#cde2fb", high = "#104281", name = "IPC",
+                      labels = num(0.1)) +
+  scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = TINTA), guide = "none") +
+  scale_x_discrete(position = "top", expand = c(0, 0)) +
+  scale_y_discrete(expand = c(0, 0)) +
+  labs(x = NULL, y = NULL,
+       title = "IPC (instruções por ciclo) de cada região de interesse",
+       caption = "Mesmas instruções em todas as colunas: muda só a microarquitetura simulada.") +
+  tema + theme(panel.grid = element_blank(), legend.position = "right",
+               axis.text.x = element_text(size = 10, face = "bold", colour = TINTA))
+salvar(g2, "fig_ipc", w = 6.5, h = 4.8)
 
 # 3) mix de instruções por ROI (não depende da CPU; usa o atomic) --------------
 d3 <- mix |> semi_join(rois |> filter(cpu == "atomic", regiao != "ROI vazia"),
@@ -175,8 +172,7 @@ salvar(linhas(d5, n, MEM, "N (matrizes N×N de double)", log2_x(c(16, 32, 64, 12
        "fig_camada_n", w = 7.5, h = 3.5)
 
 d6 <- dados |> filter(programa == "camada_densa", n == 64, cpu == "o3", roi > 0,
-                      l1i == BASE$l1i, l2 == BASE$l2, clk == BASE$clk,
-                      ssclear == BASE$ssclear) |>
+                      l1i == BASE$l1i, l2 == BASE$l2, clk == BASE$clk) |>
   mutate(l1d_kib = as.numeric(str_remove(l1d, "KiB"))) |> por_mac()
 if (n_distinct(d6$l1d_kib) > 1) {
   salvar(linhas(d6, l1d_kib, MEM, "tamanho da L1D (KiB)", log2_x(unique(d6$l1d_kib))) +
@@ -218,6 +214,36 @@ for (trace in Sys.glob("analise/saida/visual/*/gem5_o3/o3pipeview.txt")) {
                  legend.text = element_text(size = 8),
                  panel.grid.major.y = element_blank())
   salvar(g8, paste0("fig_pipeline_", caso), h = 4.2)
+}
+
+# 9) "captura de tela": a saída real do gem5 no terminal ----------------------
+#    (o gem5 não tem interface gráfica; mostra a execução da soma no o3)
+exec_soma <- base |> filter(programa == "soma_vetor", cpu == "o3", roi == 0) |> pull(execucao)
+if (length(exec_soma)) {
+  dir_s <- file.path("resultados", exec_soma[1])
+  simout <- readLines(file.path(dir_s, "simout.txt"))
+  simout <- simout[!str_detect(simout, "^(Redirecting|info: Standard input)") & nzchar(simout)]
+  simout <- str_replace(simout, "^command line: .*", "command line: gem5.opt ... se_run.py bin/soma_vetor_riscv --cpu o3 ...")
+  d <- ler_dumps(file.path(dir_s, "stats.txt.gz")) |> filter(dump == 4)   # ROI 2 (cache quente)
+  mostrar <- c("simInsts", paste0(P, "numCycles"), paste0(P, "ipc"),
+               paste0(C, "l1d-cache-0.overallMisses::total"),
+               paste0(P, "branchPred.condIncorrect"))
+  st <- d |> filter(nome %in% mostrar) |> arrange(match(nome, mostrar)) |>
+    mutate(l = sprintf("%-58s %10s", str_remove(nome, "^board\\."), format(valor, big.mark = "", scientific = FALSE, drop0trailing = TRUE)))
+  linhas <- c("$ ./simular.sh bin/soma_vetor_riscv o3", simout, "",
+              "$ zcat resultados/soma_vetor_o3_*/stats.txt.gz   # ROI 2 (cache quente)",
+              "---------- Begin Simulation Statistics ----------", st$l)
+  n <- length(linhas)
+  g9 <- ggplot() +
+    annotate("text", x = 0, y = rev(seq_len(n)), label = linhas, hjust = 0, vjust = 0.5,
+             family = "mono", size = 2.55,
+             colour = if_else(str_starts(linhas, "\\$"), "#9ec5f4",
+                              if_else(str_starts(linhas, ">>>|soma de"), "#f4c27a", "#e8e8e3"))) +
+    scale_x_continuous(limits = c(0, 1), expand = c(0.02, 0)) +
+    scale_y_continuous(limits = c(0.3, n + 0.7), expand = c(0, 0)) +
+    theme_void() +
+    theme(plot.background = element_rect(fill = "#1e1f22", colour = "#1e1f22"))
+  salvar(g9, "fig_terminal", w = 6.5, h = 0.155 * n + 0.3)
 }
 
 # ---- configuração do sistema simulado -----------------------------------------

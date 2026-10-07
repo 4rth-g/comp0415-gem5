@@ -26,8 +26,8 @@ Makefile               # pipeline (ver `make` alvos abaixo)
 simular.sh             # roda 1 simulação -> resultados/<nome>_<cpu>[_variante]_<timestamp>_<hash>/
 ambiente.sh            # Podman ou Docker + imagem, comum a todos os scripts
 configs_local/
-  se_run.py            # config gem5 (Standard Library), modo SE; CPU, caches, clock e
-                       # preditor de dependência por argumento; dump+reset em cada ROI
+  se_run.py            # config gem5 (Standard Library), modo SE; CPU, caches e clock
+                       # por argumento; dump+reset em cada ROI
 exemplos/
   comum.h              # marcação de ROI (m5_work_begin/end) + gerador LCG compartilhado
   soma_vetor.cpp       # cache fria × quente + ROI vazia    (acesso sequencial; custo da marcação)
@@ -44,14 +44,14 @@ exemplos/
 analise/
   funcoes.R            # parser do stats.txt (segmentos/ROIs), config.ini e O3PipeView
   relatorio.R          # resultados/ -> metricas.csv, tabelas .docx, fig_*.pdf|png, sistema.dot
+  fluxo.dot            # diagrama do fluxo reprodutível (fig_fluxo)
   testes.R             # testes do parser com um stats.txt sintético (make testar)
   visualizar.sh        # pipeline do o3, trace RISC-V e assembly de uma ROI (make visual)
   comparar.sh          # mesmo hash => mesmas estatísticas? (make reproduzir)
-  arquivar.sh          # execuções de entradas antigas -> resultados/legado/ (make arquivar)
 artigo/                # referencias.bib (conferido), zotero_novos.bib, ZOTERO.md
 renv.lock              # versões exatas dos pacotes R (snapshot Posit PM de 25/09/2026)
 bin/SHA256SUMS         # hashes dos binários RISC-V — referência para `make verificar`
-resultados/            # execuções atuais; resultados/legado/ guarda as de entradas antigas
+resultados/            # execuções das entradas atuais (as antigas ficam no histórico do git)
 ```
 
 ### Regiões de interesse (ROI)
@@ -112,8 +112,8 @@ Uma simulação avulsa, com parâmetros fora do padrão (entram no hash e no nom
 **Garantias de reprodutibilidade.** O hash de cada execução é
 sha256(binário + `se_run.py` + commit do gem5 + CPU + parâmetros). A análise
 só usa execuções das entradas atuais (binário em `bin/SHA256SUMS` e
-`se_run.py` do repositório); as de entradas antigas vão para
-`resultados/legado/` (`make arquivar`), rastreáveis pelo `meta.json`. O gem5 é
+`se_run.py` do repositório); quando as entradas mudam, as execuções antigas
+saem de `resultados/` e continuam no histórico do git. O gem5 é
 determinístico, então mesmas entradas dão o mesmo `stats.txt` em qualquer
 máquina (exceto as linhas `host*`, que medem o computador hospedeiro). O
 `meta.json` registra também o commit deste repositório e do `gem5-build`, o
@@ -132,7 +132,7 @@ configuração simulada está em `tabela_configuracao.docx` e `fig_sistema`.
 - **Custo da marcação de ROI** (ROI vazia, `tabela_custo_roi`): 5 instruções,
   de 6 ciclos (atomic, timing) a 25 ciclos (minor). No o3, o marcador esvazia
   o pipeline (`fig_pipeline_*`), o que pesa em ROIs pequenas.
-- **Mesmas instruções, ciclos muito diferentes** (`fig_ipc_classicos`): o
+- **Mesmas instruções, ciclos muito diferentes** (`fig_ipc`): o
   Fibonacci recursivo roda com IPC 0,67 no timing e 4,95 no o3. O atomic fica
   fora dos gráficos de IPC: é funcional, seus "ciclos" não medem tempo.
 - **Cache fria × quente** (soma, o3): a mesma soma leva 5.752 ciclos com o
@@ -163,12 +163,12 @@ configuração simulada está em `tabela_configuracao.docx` e `fig_sistema`.
   3,6× e o custo cai 44%, sem mudar as falhas de cache. Na varredura da L1D,
   o custo da i-k-j não muda com o tamanho da cache; o da i-j-k cai a partir de
   32 KiB.
-- **Resultado negativo** (`make storesets`, execuções em `resultados/legado/`):
-  zerar o preditor de dependência com mais frequência
-  (`store_set_clear_period` de 250.000 até 100) não mudou nenhuma
-  estatística. Pelo rastreamento (`--debug-flags=StoreSet`), a mesma
-  dependência volta a ser prevista logo depois de cada limpeza. Por isso essa
-  variação não serve de controle neste gem5; o controle usado é o do código.
+- **Um controle que não funcionou**: zerar com mais frequência o preditor de
+  dependência de memória (parâmetro `store_set_clear_period` do o3, de
+  250.000 até 100 acessos) não mudou nenhuma estatística. Pelo rastreamento
+  (`--debug-flags=StoreSet`), a mesma dependência volta a ser prevista logo
+  depois de cada limpeza. Por isso o controle usado é o do código (4 `k` por
+  vez). As execuções desse teste estão no commit `58fde2a`.
 - **Reprodução entre motores de container**: binários compilados e simulações
   refeitas com Docker são idênticos aos do Podman (`make verificar`,
   `analise/comparar.sh`: 2 pares idênticos, 0 divergentes).

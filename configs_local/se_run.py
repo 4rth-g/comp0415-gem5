@@ -3,7 +3,6 @@
 # tamanhos de cache e frequência do clock.
 # Uso: gem5.opt se_run.py <binario> --cpu {atomic,timing,minor,o3}
 #                         [--l1d 32KiB] [--l1i 32KiB] [--l2 256KiB] [--clk 1GHz]
-#                         [--ssclear 250000]
 #
 # Os valores padrão definem a configuração-base do artigo; simular.sh grava
 # todos os parâmetros no meta.json e os inclui no hash da execução.
@@ -35,9 +34,6 @@ p.add_argument("--l1d", default="32KiB", help="tamanho da L1 de dados")
 p.add_argument("--l1i", default="32KiB", help="tamanho da L1 de instruções")
 p.add_argument("--l2", default="256KiB", help="tamanho da L2")
 p.add_argument("--clk", default="1GHz", help="frequência do clock")
-p.add_argument("--ssclear", type=int, default=250000,
-               help="o3: a cada quantos acessos à memória o preditor de "
-                    "dependência de memória (store sets) é zerado")
 args = p.parse_args()
 
 CPU = {
@@ -51,17 +47,13 @@ cache = PrivateL1PrivateL2CacheHierarchy(
     l1d_size=args.l1d, l1i_size=args.l1i, l2_size=args.l2)
 memory = SingleChannelDDR3_1600("1GiB")
 processor = SimpleProcessor(cpu_type=CPU, isa=ISA.RISCV, num_cores=1)
-if args.cpu == "o3":
-    for core in processor.get_cores():
-        core.get_simobject().store_set_clear_period = args.ssclear
 
 board = SimpleBoard(clk_freq=args.clk, processor=processor,
                     memory=memory, cache_hierarchy=cache)
 board.set_se_binary_workload(BinaryResource(args.binary))
 
 print(f">>> Rodando {args.binary} com CPU={args.cpu} "
-      f"L1D={args.l1d} L1I={args.l1i} L2={args.l2} clk={args.clk} "
-      f"ssclear={args.ssclear}")
+      f"L1D={args.l1d} L1I={args.l1i} L2={args.l2} clk={args.clk}")
 Simulator(board=board, on_exit_event={
     ExitEvent.WORKBEGIN: dump_reset_generator(),
     ExitEvent.WORKEND: dump_reset_generator(),

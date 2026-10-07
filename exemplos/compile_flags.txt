@@ -1,3 +1,0 @@
--xc++
--std=gnu++17
--I../../gem5-build/gem5/include

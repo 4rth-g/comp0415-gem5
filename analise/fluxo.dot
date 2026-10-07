@@ -1,0 +1,28 @@
+// fluxo.dot — fluxo reprodutível do trabalho, do código-fonte ao artigo
+// (renderizado por `make analise` em analise/saida/fig_fluxo.pdf|png)
+digraph fluxo {
+  graph [rankdir=LR, fontname="Helvetica", nodesep=0.35, ranksep=0.4];
+  node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=10,
+         color="#52514e", fillcolor="#f4f3ef"];
+  edge  [color="#52514e", arrowsize=0.7, fontname="Helvetica", fontsize=8,
+         fontcolor="#52514e"];
+
+  subgraph cluster_container {
+    label="container gem5-riscv:local\n(base por digest + snapshot apt de 25/09/2026)";
+    labeljust=l; fontsize=9; fontcolor="#52514e";
+    style="rounded,dashed"; color="#86b6ef";
+    gpp  [label="g++ 13.3 RISC-V\n-O2 -static"];
+    gem5 [label="gem5 25.1.0.1\n(commit f5c5a6e)\nse_run.py", fillcolor="#dbe8f8"];
+    py   [label="referências\nem Python"];
+  }
+
+  src   [label="exemplos/*.cpp\n(ROIs marcadas)"];
+  bin   [label="binários RISC-V\n+ SHA256SUMS"];
+  res   [label="stats.txt, config.ini\n+ meta.json (hash)"];
+  r     [label="relatorio.R\n(renv.lock)"];
+  out   [label="figuras e\ntabelas"];
+  art   [label="artigo\n(Quarto → .docx)", fillcolor="#fbe3d6"];
+
+  src -> gpp -> bin -> gem5 -> res -> r -> out -> art;
+  src -> py [label="make conferir", style=dashed];
+}

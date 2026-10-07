@@ -10,13 +10,6 @@ resultados/*/*
 !resultados/*/stats.txt.gz
 !resultados/*/config.ini.gz
 !resultados/*/simout.txt
-# o mesmo para as execuções arquivadas em resultados/legado/
-!resultados/legado/*
-resultados/legado/*/*
-!resultados/legado/*/meta.json
-!resultados/legado/*/stats.txt.gz
-!resultados/legado/*/config.ini.gz
-!resultados/legado/*/simout.txt
 
 # Saída do relatorio.R (regenerável com `make analise`)
 analise/saida/
@@ -30,3 +23,5 @@ __pycache__/
 *.o
 *.pyc
 build/
+# configuração local de editor (clangd)
+exemplos/compile_flags.txt
