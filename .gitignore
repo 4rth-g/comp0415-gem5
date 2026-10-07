@@ -22,6 +22,9 @@ artigo/artigo.typ
 artigo/referencia.docx
 artigo/.quarto/
 artigo/*_files/
+slides/slides.html
+slides/*_files/
+slides/.quarto/
 
 # R
 .Rhistory

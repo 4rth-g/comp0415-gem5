@@ -21,36 +21,58 @@ tbl-cap-location: top
 
 ```{r}
 #| label: setup
-suppressPackageStartupMessages({ library(dplyr); library(readr); library(knitr) })
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(readr)
+  library(knitr)
+})
 SAIDA <- "../analise/saida"
 m <- read_csv(file.path(SAIDA, "metricas.csv"), show_col_types = FALSE)
-base <- m |> filter(l1d == "32KiB", l1i == "32KiB", l2 == "256KiB", clk == "1GHz")
+base <- m |>
+  filter(l1d == "32KiB", l1i == "32KiB", l2 == "256KiB", clk == "1GHz")
 
 # valor de uma métrica: programa, região (ROI), CPU e, na camada densa, N
 v <- function(prog, reg, cpu_, col, n_ = NA, d = base) {
   x <- d |> filter(programa == prog, regiao == reg, cpu == cpu_)
-  if (!is.na(n_)) x <- filter(x, n == n_)
+  if (!is.na(n_)) {
+    x <- filter(x, n == n_)
+  }
   stopifnot(nrow(x) == 1)
   x[[col]]
 }
-f   <- function(x, d = 2) formatC(x, format = "f", digits = d, big.mark = ".", decimal.mark = ",")
-mil <- function(x) formatC(round(x), format = "d", big.mark = ".", decimal.mark = ",")
+f <- function(x, d = 2) {
+  formatC(x, format = "f", digits = d, big.mark = ".", decimal.mark = ",")
+}
+mil <- function(x) {
+  formatC(round(x), format = "d", big.mark = ".", decimal.mark = ",")
+}
 pct <- function(x, d = 1) paste0(f(100 * x, d), "%")
 fig <- function(nome) file.path(SAIDA, paste0(nome, ".png"))
 
 # Diagramação do modelo: título em 1 coluna, corpo em 2 colunas. Figuras e
 # tabelas largas ficam em blocos de 1 coluna, entre quebras de seção
 # contínuas (cada quebra encerra a seção anterior com o nº de colunas dado).
-PAGINA <- paste0('<w:pgSz w:w="12240" w:h="15840"/>',
-                 '<w:pgMar w:top="1440" w:right="1440" w:bottom="1728" w:left="1440"',
-                 ' w:header="720" w:footer="720" w:gutter="0"/>')
+PAGINA <- paste0(
+  '<w:pgSz w:w="12240" w:h="15840"/>',
+  '<w:pgMar w:top="1440" w:right="1440" w:bottom="1728" w:left="1440"',
+  ' w:header="720" w:footer="720" w:gutter="0"/>'
+)
 quebra <- function(colunas) {
-  cols <- if (colunas == 2) '<w:cols w:num="2" w:space="460"/>' else '<w:cols w:space="720"/>'
-  cat("\n```{=openxml}\n<w:p><w:pPr><w:sectPr><w:type w:val=\"continuous\"/>",
-      PAGINA, cols, "</w:sectPr></w:pPr></w:p>\n```\n\n", sep = "")
+  cols <- if (colunas == 2) {
+    '<w:cols w:num="2" w:space="460"/>'
+  } else {
+    '<w:cols w:space="720"/>'
+  }
+  cat(
+    "\n```{=openxml}\n<w:p><w:pPr><w:sectPr><w:type w:val=\"continuous\"/>",
+    PAGINA,
+    cols,
+    "</w:sectPr></w:pPr></w:p>\n```\n\n",
+    sep = ""
+  )
 }
-largo   <- function() quebra(2)   # começa um bloco largo (encerra as 2 colunas)
-estreito <- function() quebra(1)  # volta às 2 colunas (encerra o bloco largo)
+largo <- function() quebra(2) # começa um bloco largo (encerra as 2 colunas)
+estreito <- function() quebra(1) # volta às 2 colunas (encerra o bloco largo)
 # tabelas: flextable no .docx (larguras de coluna explícitas), kable no Typst
 SAIDA_FMT <- knitr::pandoc_to()
 tabela <- function(df, larguras, mesclar = FALSE, direita = NULL) {
@@ -60,63 +82,114 @@ tabela <- function(df, larguras, mesclar = FALSE, direita = NULL) {
     alin <- ifelse(seq_along(df) %in% direita, "r", "l")
     k <- kable(df, format = "pipe", align = alin)
     tracos <- pmax(3, round(60 * larguras / sum(larguras)))
-    k[2] <- paste0("|", paste0(ifelse(alin == "r", paste0(strrep("-", tracos - 1), ":"),
-                                      paste0(":", strrep("-", tracos - 1))), collapse = "|"), "|")
+    k[2] <- paste0(
+      "|",
+      paste0(
+        ifelse(
+          alin == "r",
+          paste0(strrep("-", tracos - 1), ":"),
+          paste0(":", strrep("-", tracos - 1))
+        ),
+        collapse = "|"
+      ),
+      "|"
+    )
     return(k)
   }
   ft <- flextable::flextable(df) |>
-    flextable::theme_booktabs() |> flextable::fontsize(size = 9, part = "all") |>
-    flextable::width(width = larguras) |> flextable::align(align = "left", part = "all")
-  if (mesclar) ft <- flextable::merge_v(ft, j = 1)
-  if (!is.null(direita)) ft <- flextable::align(ft, j = direita, align = "right", part = "all")
+    flextable::theme_booktabs() |>
+    flextable::fontsize(size = 9, part = "all") |>
+    flextable::width(width = larguras) |>
+    flextable::align(align = "left", part = "all")
+  if (mesclar) {
+    ft <- flextable::merge_v(ft, j = 1)
+  }
+  if (!is.null(direita)) {
+    ft <- flextable::align(ft, j = direita, align = "right", part = "all")
+  }
   ft
 }
 
 # bloco de título, nos estilos do modelo (.docx) ou como bloco Typst que
 # ocupa a largura das duas colunas
-TITULO    <- "Simulação Arquitetural com o gem5 sobre RISC-V: Instalação Reprodutível e Exemplos Básicos, de Algoritmos Clássicos a Redes Neurais"
-AUTORES   <- "Arthur [SOBRENOME], [NOME DO(A) COLEGA]"
+TITULO <- "Simulação Arquitetural com o gem5 sobre RISC-V: Instalação Reprodutível e Exemplos Básicos, de Algoritmos Clássicos a Redes Neurais"
+AUTORES <- "Arthur de Azevedo Grazzia, Renato Veloso Pires Filho"
 AFILIACAO <- "Departamento de Computação (DCOMP), Universidade Federal de Sergipe – UFS"
-EMAILS    <- "[e-mail 1], [e-mail 2]"
+EMAILS <- "arthur.grazzia@dcomp.ufs.br, renatopiresfilho.rvpf@gmail.com"
 cabecalho <- function() {
   if (identical(SAIDA_FMT, "typst")) {
     esc <- function(x) gsub("([][#$*_@<>`\\])", "\\\\\\1", x)
-    cat("```{=typst}\n",
-        "#place(top, float: true, scope: \"parent\", clearance: 1.6em)[\n",
-        "#set par(first-line-indent: 0pt, justify: false)\n#align(center)[\n",
-        "#text(size: 14pt, weight: \"bold\")[", esc(TITULO), "]\n\n#v(0.3em)\n",
-        "#text(size: 12pt)[", esc(AUTORES), "]\n\n",
-        "#text(size: 12pt, style: \"italic\")[", esc(AFILIACAO), "]\n\n",
-        "#text(size: 12pt, style: \"italic\")[", esc(EMAILS), "]\n]]\n```\n\n", sep = "")
+    cat(
+      "```{=typst}\n",
+      "#place(top, float: true, scope: \"parent\", clearance: 1.6em)[\n",
+      "#set par(first-line-indent: 0pt, justify: false)\n#align(center)[\n",
+      "#text(size: 14pt, weight: \"bold\")[",
+      esc(TITULO),
+      "]\n\n#v(0.3em)\n",
+      "#text(size: 12pt)[",
+      esc(AUTORES),
+      "]\n\n",
+      "#text(size: 12pt, style: \"italic\")[",
+      esc(AFILIACAO),
+      "]\n\n",
+      "#text(size: 12pt, style: \"italic\")[",
+      esc(EMAILS),
+      "]\n]]\n```\n\n",
+      sep = ""
+    )
   } else {
-    for (x in list(c("Title", TITULO), c("Author", AUTORES),
-                   c("Affiliation", AFILIACAO), c("Affiliation", EMAILS)))
+    for (x in list(
+      c("Title", TITULO),
+      c("Author", AUTORES),
+      c("Affiliation", AFILIACAO),
+      c("Affiliation", EMAILS)
+    )) {
       cat('::: {custom-style="', x[1], '"}\n', x[2], '\n:::\n\n', sep = "")
+    }
     quebra(1)
   }
 }
 
 # no Fibonacci não há nada além das duas ROIs: o resto é inicialização e saída
-vel <- base |> filter(roi > 0, instrucoes >= 1e5, tempo_host > 0) |>
-  group_by(cpu) |> summarise(t = median(instrucoes / tempo_host)) |>
+vel <- base |>
+  filter(roi > 0, instrucoes >= 1e5, tempo_host > 0) |>
+  group_by(cpu) |>
+  summarise(t = median(instrucoes / tempo_host)) |>
   (\(d) setNames(d$t, d$cpu))()
 fora_fib <- v("fibonacci", "programa inteiro", "atomic", "instrucoes") -
   v("fibonacci", "recursivo", "atomic", "instrucoes") -
   v("fibonacci", "iterativo (2000×)", "atomic", "instrucoes")
-soma_laco  <- v("soma_vetor", "cache quente", "atomic", "instrucoes")
+soma_laco <- v("soma_vetor", "cache quente", "atomic", "instrucoes")
 cd <- function(reg, cpu_, col) v("camada_densa", reg, cpu_, col, n_ = 64)
 mix <- read_csv(file.path(SAIDA, "mix.csv"), show_col_types = FALSE)
-fat_pilha <- mix |> filter(cpu == "atomic", programa == "fatorial", regiao == "recursivo (2000×)") |>
-  summarise(sum(qtd[grupo %in% c("leitura de memória", "escrita em memória")]) / sum(qtd)) |> pull()
+fat_pilha <- mix |>
+  filter(
+    cpu == "atomic",
+    programa == "fatorial",
+    regiao == "recursivo (2000×)"
+  ) |>
+  summarise(
+    sum(qtd[grupo %in% c("leitura de memória", "escrita em memória")]) /
+      sum(qtd)
+  ) |>
+  pull()
 # divisões do MDC de Euclides: lidas do stats.txt (o metricas.csv agrupa as classes)
 source("../analise/funcoes.R", chdir = TRUE)
 div_euclides <- local({
-  ex <- base |> filter(programa == "mdc", cpu == "atomic", roi == 1) |> pull(execucao)
+  ex <- base |>
+    filter(programa == "mdc", cpu == "atomic", roi == 1) |>
+    pull(execucao)
   d <- ler_dumps(file.path("../resultados", ex, "stats.txt.gz"))
   d$valor[d$dump == 2 & d$nome == paste0(PREFIXO_MIX, "IntDiv")]
 })
-fp <- mix |> filter(cpu == "atomic", roi > 0, programa %in% c("regressao_linear", "perceptron", "mlp_xor")) |>
-  group_by(programa) |> summarise(fp = sum(qtd[grupo == "ponto flutuante"]) / sum(qtd))
+fp <- mix |>
+  filter(
+    cpu == "atomic",
+    roi > 0,
+    programa %in% c("regressao_linear", "perceptron", "mlp_xor")
+  ) |>
+  group_by(programa) |>
+  summarise(fp = sum(qtd[grupo == "ponto flutuante"]) / sum(qtd))
 ```
 
 ```{r}
@@ -124,11 +197,11 @@ fp <- mix |> filter(cpu == "atomic", roi > 0, programa %in% c("regressao_linear"
 cabecalho()
 ```
 
-::: {.content-visible when-format="docx"}
+:::: {.content-visible when-format="docx"}
 ::: {custom-style="Abstract Title"}
 Resumo
 :::
-:::
+::::
 
 ```{=typst}
 #align(center, text(size: 12pt, weight: "bold")[Resumo])
@@ -136,7 +209,7 @@ Resumo
 ```
 
 ::: {custom-style="Abstract Text"}
-Este artigo apresenta o gem5, simulador de arquitetura de computadores de código aberto, e o seu uso para executar algoritmos básicos sobre a ISA RISC-V. Após situar o gem5 entre outros simuladores, descrevemos uma instalação reprodutível: o simulador, o compilador cruzado e as bibliotecas ficam fixados em um container, e uma mesma simulação produz estatísticas idênticas com motores de container diferentes. Onze programas — oito algoritmos clássicos de programação (soma, ordenação, busca, busca em grafo, Fibonacci, fatorial, máximo divisor comum e multiplicação de matrizes) e três exemplos de redes neurais — foram executados em quatro modelos de processador do gem5, medindo apenas as regiões de interesse de cada algoritmo. Os exemplos mostram o que um simulador revela e um computador real esconde: o mesmo código roda com IPC de `r f(v("fibonacci", "recursivo", "timing", "ipc"))` a `r f(v("fibonacci", "recursivo", "o3", "ipc"))` conforme a microarquitetura; um algoritmo com menos instruções pode ser mais lento, por depender de divisões; e, na multiplicação de matrizes, a ordem de laço que melhor usa a cache é a mais lenta no processador fora de ordem, por causa da predição de dependências de memória. Link do vídeo: [LINK DO VÍDEO — até 10 minutos].
+Este artigo apresenta o gem5, simulador de arquitetura de computadores de código aberto, e o seu uso para executar algoritmos básicos sobre a ISA RISC-V. Após situar o gem5 entre outros simuladores, descrevemos uma instalação reprodutível: o simulador, o compilador cruzado e as bibliotecas ficam fixados em um container, e uma mesma simulação produz estatísticas idênticas com motores de container diferentes. Onze programas — oito algoritmos clássicos de programação (soma, ordenação, busca, busca em grafo, Fibonacci, fatorial, máximo divisor comum e multiplicação de matrizes) e três exemplos de redes neurais — foram executados em quatro modelos de processador do gem5, medindo apenas as regiões de interesse de cada algoritmo. Os exemplos mostram o que um simulador revela e um computador real esconde: o mesmo código roda com IPC de `r f(v("fibonacci", "recursivo", "timing", "ipc"))` a `r f(v("fibonacci", "recursivo", "o3", "ipc"))` conforme a microarquitetura; um algoritmo com menos instruções pode ser mais lento, por depender de divisões; e, na multiplicação de matrizes, a ordem de laço que melhor usa a cache é a mais lenta no processador fora de ordem, por causa da predição de dependências de memória. Link do vídeo: \[LINK DO VÍDEO — até 10 minutos\].
 :::
 
 ```{=typst}
@@ -151,7 +224,7 @@ Observar esses mecanismos em um processador real, porém, é difícil: o hardwar
 
 Neste trabalho foi selecionado o gem5 [@binkert2011gem5; @lowepower2020gem5v20], simulador amplamente usado na pesquisa, com vários modelos de processador e suporte à ISA RISC-V [@waterman2019riscv]. As contribuições são três: (i) uma instalação reprodutível do gem5, com todas as versões fixadas e verificada com dois motores de container; (ii) onze exemplos básicos — oito algoritmos clássicos de programação e três de redes neurais — executados em quatro modelos de processador, medindo só a região de interesse de cada algoritmo; e (iii) a análise do que o simulador mostra em cada exemplo, incluindo um resultado contraintuitivo sobre a interação entre cache e execução fora de ordem.
 
-A Seção 2 apresenta simuladores de arquitetura e o funcionamento do gem5; a Seção 3, a instalação e a configuração; a Seção 4, os exemplos; as Seções 5 e 6, as conclusões e os trabalhos futuros. Todo o código, as simulações e a análise estão em um repositório público [LINK DO REPOSITÓRIO].
+A Seção 2 apresenta simuladores de arquitetura e o funcionamento do gem5; a Seção 3, a instalação e a configuração; a Seção 4, os exemplos; as Seções 5 e 6, as conclusões e os trabalhos futuros. Todo o código, as simulações e a análise estão em um repositório público \[LINK DO REPOSITÓRIO\].
 
 # 2. O Simulador Selecionado: gem5
 
@@ -166,8 +239,6 @@ A @tbl-simuladores compara alguns simuladores conhecidos. O QEMU [@bellard2005qe
 largo()
 ```
 
-: Comparação entre simuladores de arquitetura {#tbl-simuladores}
-
 | Simulador | ISA | Nível de detalhe | Interface | Foco |
 |----------------|--------------------|---------------------------|--------------------|----------------|
 | gem5 | RISC-V, x86, Arm e outras | funcional a ciclo a ciclo; modos SE e FS | linha de comando, configuração em Python | pesquisa e ensino |
@@ -177,11 +248,12 @@ largo()
 | WebRISC-V | RISC-V | pipeline de 5 estágios | navegador | ensino |
 | MARS | MIPS | funcional | gráfica (IDE) | ensino de assembly |
 
+: Comparação entre simuladores de arquitetura {#tbl-simuladores}
+
 ```{r}
 #| results: asis
 estreito()
 ```
-
 
 O gem5 foi escolhido por ser o único da tabela que combina RISC-V, vários modelos de processador — do funcional ao fora de ordem detalhado —, hierarquia de caches configurável e estatísticas detalhadas de cada componente. Também é ativamente mantido, amplamente usado em pesquisa [@akram2019survey] e tem documentação e material introdutório [@lowepower2026learning; @aquino2024gem5], inclusive em português [@rigotto2023gem5]. A contrapartida é a ausência de interface gráfica: o gem5 é configurado por scripts e seus resultados são arquivos de texto, que precisam ser processados para virar figuras.
 
@@ -194,7 +266,7 @@ O gem5 é um simulador **orientado a eventos**: cada componente agenda eventos p
 largo()
 ```
 
-![Organização do gem5: o script de configuração em Python instancia e conecta os componentes (SimObjects) do núcleo em C++; a fila de eventos avança o tempo simulado; no modo SE, as chamadas de sistema do programa são atendidas pelo próprio simulador.](`r fig("fig_gem5")`){#fig-gem5 width=95%}
+![Organização do gem5: o script de configuração em Python instancia e conecta os componentes (SimObjects) do núcleo em C++; a fila de eventos avança o tempo simulado; no modo SE, as chamadas de sistema do programa são atendidas pelo próprio simulador.](`r fig("fig_gem5")`){#fig-gem5 width="95%"}
 
 ```{r}
 #| results: asis
@@ -215,7 +287,7 @@ O detalhe tem custo: quanto mais o modelo simula por ciclo, mais lenta é a simu
 largo()
 ```
 
-![Velocidade de simulação de cada modelo de CPU, em instruções simuladas por segundo, nas regiões de interesse com mais de 100 mil instruções.](`r fig("fig_velocidade")`){#fig-velocidade width=80%}
+![Velocidade de simulação de cada modelo de CPU, em instruções simuladas por segundo, nas regiões de interesse com mais de 100 mil instruções.](`r fig("fig_velocidade")`){#fig-velocidade width="80%"}
 
 ```{r}
 #| results: asis
@@ -229,7 +301,7 @@ O o3 é o modelo mais completo, e os resultados da Seção 4 dependem de sua est
 largo()
 ```
 
-![Pipeline do processador o3 simulado, com os tamanhos das estruturas lidos do `config.ini`. Estágios em inglês, como na documentação do gem5.](`r fig("fig_o3")`){#fig-o3 width=95%}
+![Pipeline do processador o3 simulado, com os tamanhos das estruturas lidos do `config.ini`. Estágios em inglês, como na documentação do gem5.](`r fig("fig_o3")`){#fig-o3 width="95%"}
 
 ```{r}
 #| results: asis
@@ -258,13 +330,12 @@ A compilação do gem5 para RISC-V (`scons build/RISCV/gem5.opt`) levou 76 minut
 largo()
 ```
 
-![Fluxo reprodutível do trabalho. Tudo o que compila ou simula roda no mesmo container; cada simulação recebe um identificador (hash) calculado a partir de todas as suas entradas.](`r fig("fig_fluxo")`){#fig-fluxo width=95%}
+![Fluxo reprodutível do trabalho. Tudo o que compila ou simula roda no mesmo container; cada simulação recebe um identificador (hash) calculado a partir de todas as suas entradas.](`r fig("fig_fluxo")`){#fig-fluxo width="95%"}
 
 ```{r}
 #| results: asis
 estreito()
 ```
-
 
 A reprodutibilidade foi verificada, não apenas planejada. Cada simulação recebe um *hash* calculado a partir do binário, do script de configuração, do *commit* do gem5, do modelo de CPU e dos parâmetros; como o gem5 é determinístico, simulações com o mesmo hash devem produzir o mesmo `stats.txt`. Construindo a imagem e recompilando os exemplos com dois motores de container diferentes (Podman e Docker), os binários saíram idênticos bit a bit, e simulações refeitas com o Docker produziram estatísticas idênticas às do Podman, exceto as linhas que medem o próprio computador hospedeiro (tempo e memória).
 
@@ -272,7 +343,7 @@ A reprodutibilidade foi verificada, não apenas planejada. Cada simulação rece
 
 O sistema simulado foi descrito com a *Standard Library* do gem5 em um script curto (`se_run.py`), cujo trecho principal é:
 
-```python
+``` python
 cache = PrivateL1PrivateL2CacheHierarchy(
     l1d_size="32KiB", l1i_size="32KiB",
     l2_size="256KiB")
@@ -288,7 +359,7 @@ board.set_se_binary_workload(
 
 O modelo de CPU (`CPU`) e os tamanhos das caches são parâmetros de linha de comando. A @fig-sistema mostra o sistema resultante e a @tbl-configuracao, os parâmetros efetivamente usados, lidos do `config.ini` gerado pelo próprio gem5.
 
-![Sistema simulado: um núcleo RISC-V, caches L1 de instruções e de dados, L2 privada e memória DDR3.](`r fig("fig_sistema")`){#fig-sistema width=2.6in}
+![Sistema simulado: um núcleo RISC-V, caches L1 de instruções e de dados, L2 privada e memória DDR3.](`r fig("fig_sistema")`){#fig-sistema width="2.6in"}
 
 ```{r}
 #| results: asis
@@ -307,12 +378,11 @@ read_csv(file.path(SAIDA, "configuracao.csv"), show_col_types = FALSE) |>
 estreito()
 ```
 
-
 ## 3.3 Compilação dos exemplos
 
 Os exemplos foram escritos em C++ e compilados para RISC-V de 64 bits (RV64GC) como binários estáticos, pois no modo SE o gem5 não carrega bibliotecas dinâmicas:
 
-```bash
+``` bash
 riscv64-linux-gnu-g++ -O2 -static \
   -march=rv64gc -mabi=lp64d \
   -ffp-contract=off soma_vetor.cpp \
@@ -330,13 +400,12 @@ Cada simulação é disparada por um script que chama o gem5 dentro do container
 largo()
 ```
 
-![Execução do gem5 no terminal: simulação da soma de vetor na CPU o3 e trecho do `stats.txt` (região de interesse 2). Texto reproduzido dos arquivos de saída da simulação.](`r fig("fig_terminal")`){#fig-terminal width=95%}
+![Execução do gem5 no terminal: simulação da soma de vetor na CPU o3 e trecho do `stats.txt` (região de interesse 2). Texto reproduzido dos arquivos de saída da simulação.](`r fig("fig_terminal")`){#fig-terminal width="95%"}
 
 ```{r}
 #| results: asis
 estreito()
 ```
-
 
 Um binário estático executa cerca de `r mil(fora_fib)` instruções fora do algoritmo — inicializando a biblioteca C antes do `main` e imprimindo o resultado no fim —, mais que o próprio algoritmo em vários exemplos. Para medir só o algoritmo, cada programa marca sua **região de interesse** (ROI) com as chamadas `m5_work_begin` e `m5_work_end` da biblioteca `libm5` do gem5. Essas chamadas executam instruções especiais que o simulador intercepta; o script de configuração registra um tratador para esses eventos que grava e zera as estatísticas. O `stats.txt` fica dividido em trechos — antes, ROI 1, entre, ROI 2, ..., depois —, e a soma de todos os trechos corresponde ao programa inteiro. Uma ROI vazia, sem nada entre as marcações, mede o custo da própria marcação: `r mil(v("soma_vetor", "ROI vazia", "o3", "instrucoes"))` instruções e de `r mil(v("soma_vetor", "ROI vazia", "timing", "ciclos"))` a `r mil(v("soma_vetor", "ROI vazia", "minor", "ciclos"))` ciclos, desprezível frente às ROIs medidas.
 
@@ -348,8 +417,6 @@ Os onze programas da @tbl-programas incluem oito algoritmos típicos de discipli
 #| results: asis
 largo()
 ```
-
-: Programas executados e o que cada um exercita no processador {#tbl-programas}
 
 | Programa | Regiões de interesse comparadas | Mecanismo observado |
 |-----------------------------------|----------------------------------------|----------------------------|
@@ -365,6 +432,8 @@ largo()
 | Perceptron | treino até convergir | desvio que depende do aprendizado |
 | Rede neural 2-4-1 (XOR) | treino com retropropagação | ponto flutuante e função exponencial |
 
+: Programas executados e o que cada um exercita no processador {#tbl-programas}
+
 ```{r}
 #| results: asis
 estreito()
@@ -375,7 +444,7 @@ estreito()
 largo()
 ```
 
-![Instruções executadas no programa inteiro e só nas regiões de interesse (escala logarítmica). Nos programas pequenos, boa parte é inicialização da biblioteca C.](`r fig("fig_instrucoes")`){#fig-instrucoes width=95%}
+![Instruções executadas no programa inteiro e só nas regiões de interesse (escala logarítmica). Nos programas pequenos, boa parte é inicialização da biblioteca C.](`r fig("fig_instrucoes")`){#fig-instrucoes width="95%"}
 
 ```{r}
 #| results: asis
@@ -386,7 +455,7 @@ estreito()
 
 O laço da soma é compilado para apenas quatro instruções RISC-V (comprimidas, de 16 bits) por elemento:
 
-```text
+``` text
 loop: c.lw   a5, 0(s0)   # carrega v[i]
       c.addi s0, 4       # próximo elemento
       c.add  s3, a5      # soma += v[i]
@@ -400,7 +469,7 @@ Para ver como o processador fora de ordem executa esse laço, o gem5 pode regist
 largo()
 ```
 
-![Pipeline do processador o3 executando o laço da soma de vetor, instrução por instrução. Cada barra mostra o tempo que a instrução passou em cada etapa; o círculo marca o *commit*.](`r fig("fig_pipeline_soma_vetor_roi2")`){#fig-pipeline width=95%}
+![Pipeline do processador o3 executando o laço da soma de vetor, instrução por instrução. Cada barra mostra o tempo que a instrução passou em cada etapa; o círculo marca o *commit*.](`r fig("fig_pipeline_soma_vetor_roi2")`){#fig-pipeline width="95%"}
 
 ```{r}
 #| results: asis
@@ -413,14 +482,14 @@ O exemplo também mostra o efeito da cache. Na primeira ROI, um buffer de 1 MiB 
 
 O bubble sort compara vizinhos e troca os que estão fora de ordem. Em um vetor aleatório, o desvio "troca ou não troca" é imprevisível; em um vetor já ordenado, o código executa as mesmas comparações, mas nunca troca. Processadores com pipeline tentam adivinhar o resultado de cada desvio para não esperar; quando erram, descartam as instruções buscadas no caminho errado [@smith1981branch]. A @fig-predicao mostra a taxa de erro do preditor em cada ROI: no vetor aleatório, o o3 erra `r pct(v("ordenacao", "bubble sort (aleatório)", "o3", "erro_predicao"))` dos desvios condicionais; no vetor ordenado, `r pct(v("ordenacao", "bubble sort (já ordenado)", "o3", "erro_predicao"))`, e o mesmo código executa `r mil(v("ordenacao", "bubble sort (já ordenado)", "o3", "instrucoes"))` instruções em `r mil(v("ordenacao", "bubble sort (já ordenado)", "o3", "ciclos"))` ciclos, contra `r mil(v("ordenacao", "bubble sort (aleatório)", "o3", "ciclos"))` no aleatório.
 
-O quicksort ordena uma cópia do mesmo vetor aleatório com `r mil(v("ordenacao", "quicksort (aleatório)", "o3", "instrucoes"))` instruções, `r f(v("ordenacao", "bubble sort (aleatório)", "o3", "instrucoes") / v("ordenacao", "quicksort (aleatório)", "o3", "instrucoes"), 1)` vezes menos que o bubble sort — a diferença entre O(n²) e O(n log n) comparações. A partição, porém, decide a cada elemento para que lado do pivô ele vai, e o preditor erra `r pct(v("ordenacao", "quicksort (aleatório)", "o3", "erro_predicao"))` desses desvios; o ganho em ciclos no o3 é de `r f(v("ordenacao", "bubble sort (aleatório)", "o3", "ciclos") / v("ordenacao", "quicksort (aleatório)", "o3", "ciclos"), 1)` vezes.
+O quicksort [@hoare1962quicksort; @cormen2022algorithms] ordena uma cópia do mesmo vetor aleatório com `r mil(v("ordenacao", "quicksort (aleatório)", "o3", "instrucoes"))` instruções, `r f(v("ordenacao", "bubble sort (aleatório)", "o3", "instrucoes") / v("ordenacao", "quicksort (aleatório)", "o3", "instrucoes"), 1)` vezes menos que o bubble sort — a diferença entre O(n²) e O(n log n) comparações. A partição, porém, decide a cada elemento para que lado do pivô ele vai, e o preditor erra `r pct(v("ordenacao", "quicksort (aleatório)", "o3", "erro_predicao"))` desses desvios; o ganho em ciclos no o3 é de `r f(v("ordenacao", "bubble sort (aleatório)", "o3", "ciclos") / v("ordenacao", "quicksort (aleatório)", "o3", "ciclos"), 1)` vezes.
 
 ```{r}
 #| results: asis
 largo()
 ```
 
-![Fração dos desvios condicionais com predição errada, nas CPUs que têm preditor (minor e o3).](`r fig("fig_predicao")`){#fig-predicao width=95%}
+![Fração dos desvios condicionais com predição errada, nas CPUs que têm preditor (minor e o3).](`r fig("fig_predicao")`){#fig-predicao width="95%"}
 
 ```{r}
 #| results: asis
@@ -429,11 +498,11 @@ estreito()
 
 ## 4.3 Busca linear e busca binária
 
-As duas buscas respondem às mesmas 500 consultas no mesmo vetor ordenado. A busca linear executa `r mil(v("busca_binaria", "busca linear", "o3", "instrucoes"))` instruções e a binária, `r mil(v("busca_binaria", "busca binária", "o3", "instrucoes"))` — `r round(v("busca_binaria", "busca linear", "o3", "instrucoes") / v("busca_binaria", "busca binária", "o3", "instrucoes"))` vezes menos, refletindo O(N) contra O(log N). O ganho em ciclos no o3, porém, é menor: `r round(v("busca_binaria", "busca linear", "o3", "ciclos") / v("busca_binaria", "busca binária", "o3", "ciclos"))` vezes. A busca linear tem desvios previsíveis e roda com IPC de `r f(v("busca_binaria", "busca linear", "o3", "ipc"))`; na binária, cada comparação decide para que lado seguir, o preditor erra `r pct(v("busca_binaria", "busca binária", "o3", "erro_predicao"))` dos desvios e o IPC cai para `r f(v("busca_binaria", "busca binária", "o3", "ipc"))`. A complexidade do algoritmo diz quantas instruções serão executadas; a microarquitetura diz quanto custa cada uma.
+As duas buscas respondem às mesmas 500 consultas no mesmo vetor ordenado. A busca linear executa `r mil(v("busca_binaria", "busca linear", "o3", "instrucoes"))` instruções e a binária, `r mil(v("busca_binaria", "busca binária", "o3", "instrucoes"))` — `r round(v("busca_binaria", "busca linear", "o3", "instrucoes") / v("busca_binaria", "busca binária", "o3", "instrucoes"))` vezes menos, refletindo O(N) contra O(log N) [@cormen2022algorithms]. O ganho em ciclos no o3, porém, é menor: `r round(v("busca_binaria", "busca linear", "o3", "ciclos") / v("busca_binaria", "busca binária", "o3", "ciclos"))` vezes. A busca linear tem desvios previsíveis e roda com IPC de `r f(v("busca_binaria", "busca linear", "o3", "ipc"))`; na binária, cada comparação decide para que lado seguir, o preditor erra `r pct(v("busca_binaria", "busca binária", "o3", "erro_predicao"))` dos desvios e o IPC cai para `r f(v("busca_binaria", "busca binária", "o3", "ipc"))`. A complexidade do algoritmo diz quantas instruções serão executadas; a microarquitetura diz quanto custa cada uma.
 
 ## 4.4 Busca em largura: localidade de memória
 
-A busca em largura (BFS) percorre um grafo a partir de um vértice, visitando os vizinhos em ordem de distância. O mesmo código foi executado em dois grafos com 4096 vértices e quatro arestas por vértice, armazenados em listas de adjacência contíguas (cerca de 112 KiB, mais que a L1D): uma grade 64×64, em que os vizinhos de um vértice v são v ± 1 e v ± 64, e um grafo com vizinhos sorteados. As duas buscas executam praticamente o mesmo número de instruções (`r mil(v("grafo", "BFS na grade", "o3", "instrucoes"))` e `r mil(v("grafo", "BFS em grafo aleatório", "o3", "instrucoes"))`). Na grade, vértices vizinhos estão próximos na memória e cada linha de cache trazida é reaproveitada; no grafo aleatório, cada aresta leva a um ponto qualquer do vetor de distâncias. As faltas na L1D sobem de `r f(v("grafo", "BFS na grade", "o3", "mpki_l1d"), 1)` para `r f(v("grafo", "BFS em grafo aleatório", "o3", "mpki_l1d"), 1)` por mil instruções, e o o3 passa de IPC `r f(v("grafo", "BFS na grade", "o3", "ipc"))` para `r f(v("grafo", "BFS em grafo aleatório", "o3", "ipc"))` — `r f(v("grafo", "BFS em grafo aleatório", "o3", "ciclos") / v("grafo", "BFS na grade", "o3", "ciclos"), 1)` vezes mais ciclos para o mesmo algoritmo, só pela estrutura dos dados.
+A busca em largura (BFS) percorre um grafo a partir de um vértice, visitando os vizinhos em ordem de distância [@cormen2022algorithms]. O mesmo código foi executado em dois grafos com 4096 vértices e quatro arestas por vértice, armazenados em listas de adjacência contíguas (cerca de 112 KiB, mais que a L1D): uma grade 64×64, em que os vizinhos de um vértice v são v ± 1 e v ± 64, e um grafo com vizinhos sorteados. As duas buscas executam praticamente o mesmo número de instruções (`r mil(v("grafo", "BFS na grade", "o3", "instrucoes"))` e `r mil(v("grafo", "BFS em grafo aleatório", "o3", "instrucoes"))`). Na grade, vértices vizinhos estão próximos na memória e cada linha de cache trazida é reaproveitada; no grafo aleatório, cada aresta leva a um ponto qualquer do vetor de distâncias. As faltas na L1D sobem de `r f(v("grafo", "BFS na grade", "o3", "mpki_l1d"), 1)` para `r f(v("grafo", "BFS em grafo aleatório", "o3", "mpki_l1d"), 1)` por mil instruções, e o o3 passa de IPC `r f(v("grafo", "BFS na grade", "o3", "ipc"))` para `r f(v("grafo", "BFS em grafo aleatório", "o3", "ipc"))` — `r f(v("grafo", "BFS em grafo aleatório", "o3", "ciclos") / v("grafo", "BFS na grade", "o3", "ciclos"), 1)` vezes mais ciclos para o mesmo algoritmo, só pela estrutura dos dados.
 
 ## 4.5 Recursão: Fibonacci e fatorial
 
@@ -443,7 +512,7 @@ O fatorial isola o *custo* de cada chamada. As duas versões fazem exatamente as
 
 ## 4.6 Máximo divisor comum: a latência da divisão
 
-O algoritmo de Euclides calcula o MDC por restos sucessivos: cada passo executa uma divisão inteira (a instrução `remu`), e o passo seguinte precisa do resultado dela. O MDC binário chega ao mesmo resultado só com deslocamentos e subtrações, ao custo de mais passos. Para os mesmos 2000 pares, Euclides executa `r mil(v("mdc", "Euclides (resto)", "o3", "instrucoes"))` instruções, das quais `r mil(div_euclides)` são divisões, e o binário, `r mil(v("mdc", "binário (sem divisão)", "o3", "instrucoes"))` — `r f(v("mdc", "binário (sem divisão)", "o3", "instrucoes") / v("mdc", "Euclides (resto)", "o3", "instrucoes"), 1)` vezes mais.
+O algoritmo de Euclides calcula o MDC por restos sucessivos [@knuth1997seminumerical]: cada passo executa uma divisão inteira (a instrução `remu`), e o passo seguinte precisa do resultado dela. O MDC binário [@stein1967binarygcd] chega ao mesmo resultado só com deslocamentos e subtrações, ao custo de mais passos. Para os mesmos 2000 pares, Euclides executa `r mil(v("mdc", "Euclides (resto)", "o3", "instrucoes"))` instruções, das quais `r mil(div_euclides)` são divisões, e o binário, `r mil(v("mdc", "binário (sem divisão)", "o3", "instrucoes"))` — `r f(v("mdc", "binário (sem divisão)", "o3", "instrucoes") / v("mdc", "Euclides (resto)", "o3", "instrucoes"), 1)` vezes mais.
 
 Este exemplo mostra que a escolha do modelo de CPU muda a conclusão. O atomic e o timing contam cada instrução como um ciclo e não modelam a latência das unidades funcionais: neles, Euclides é `r f(v("mdc", "binário (sem divisão)", "timing", "ciclos") / v("mdc", "Euclides (resto)", "timing", "ciclos"), 1)` vezes mais rápido. No o3, a unidade de divisão tem latência de 20 ciclos (valor do `config.ini`) e, como cada passo depende do resto anterior, essa espera não pode ser escondida: Euclides roda com IPC de `r f(v("mdc", "Euclides (resto)", "o3", "ipc"))` e passa a ser *mais lento* que o binário (`r mil(v("mdc", "Euclides (resto)", "o3", "ciclos"))` contra `r mil(v("mdc", "binário (sem divisão)", "o3", "ciclos"))` ciclos).
 
@@ -452,7 +521,7 @@ Este exemplo mostra que a escolha do modelo de CPU muda a conclusão. O atomic e
 A multiplicação de matrizes é também o núcleo da inferência de uma camada densa de rede neural, Y = ReLU(XW + b), que foi o cálculo implementado. O mesmo produto foi escrito em três ordens de laço, com resultado idêntico bit a bit:
 
 - **i-j-k**: acumula cada elemento de Y em um registrador, percorrendo W por coluna — a cada passo, salta N × 8 bytes na memória;
-- **i-k-j**: percorre W e Y por linha, acesso sequencial e amigável à cache [@lam1991blocked], mas lê Y[i][j] logo depois de tê-lo gravado;
+- **i-k-j**: percorre W e Y por linha, acesso sequencial e amigável à cache [@lam1991blocked], mas lê Y\[i\]\[j\] logo depois de tê-lo gravado;
 - **i-k-j com 4 valores de k por vez**: o mesmo acesso por linha, acumulando em registrador e gravando Y quatro vezes menos.
 
 A análise só de cache prevê que a i-k-j seja a mais rápida quando as matrizes não cabem na L1 (N ≥ 64). É o que acontece no processador timing (@tbl-camada). No o3, porém, a i-k-j é duas vezes mais lenta que a i-j-k, apesar de ter `r round(cd("ordem i-j-k", "o3", "mpki_l1d") / cd("ordem i-k-j", "o3", "mpki_l1d"))` vezes menos faltas na L1.
@@ -471,8 +540,12 @@ tibble(
   `Faltas L1D / mil instr. (o3)` = f(sapply(regs, cd, "o3", "mpki_l1d"), 1),
   `Cargas retidas (o3)` = mil(sapply(regs, cd, "o3", "cargas_retidas")),
   `Ciclos / mult.-acum. (o3)` = f(sapply(regs, cd, "o3", "ciclos_por_mac")),
-  `Ciclos / mult.-acum. (timing)` = f(sapply(regs, cd, "timing", "ciclos_por_mac"), 1)
-) |> tabela(c(1.4, 1.3, 1.2, 1.3, 1.3), direita = 2:5)
+  `Ciclos / mult.-acum. (timing)` = f(
+    sapply(regs, cd, "timing", "ciclos_por_mac"),
+    1
+  )
+) |>
+  tabela(c(1.4, 1.3, 1.2, 1.3, 1.3), direita = 2:5)
 ```
 
 ```{r}
@@ -480,8 +553,7 @@ tibble(
 estreito()
 ```
 
-
-A explicação está em um mecanismo do processador fora de ordem: a **predição de dependências de memória** (@fig-o3). Quando um *load* aparece depois de um *store* cujo endereço ainda não foi calculado, o processador tem duas opções: esperar (seguro, mas lento) ou arriscar e executar o *load* antes (rápido, mas, se os endereços coincidirem, o resultado está errado e o trabalho é descartado). Para escolher, o o3 precisa adivinhar se os dois acessam o mesmo endereço; o gem5 implementa o preditor *store sets* [@chrysos1998storesets], que aprende quais leituras dependem de quais escritas. Na i-k-j, a leitura de Y[i][j] depende, de fato, da escrita feita alguns ciclos antes; o preditor aprende isso e passa a reter cada leitura até a escrita terminar — `r mil(cd("ordem i-k-j", "o3", "cargas_retidas"))` leituras retidas na ROI —, serializando o laço. A i-j-k acumula em registrador, sem esse padrão; suas faltas na cache são em boa parte escondidas pela execução fora de ordem.
+A explicação está em um mecanismo do processador fora de ordem: a **predição de dependências de memória** (@fig-o3). Quando um *load* aparece depois de um *store* cujo endereço ainda não foi calculado, o processador tem duas opções: esperar (seguro, mas lento) ou arriscar e executar o *load* antes (rápido, mas, se os endereços coincidirem, o resultado está errado e o trabalho é descartado). Para escolher, o o3 precisa adivinhar se os dois acessam o mesmo endereço; o gem5 implementa o preditor *store sets* [@chrysos1998storesets], que aprende quais leituras dependem de quais escritas. Na i-k-j, a leitura de Y\[i\]\[j\] depende, de fato, da escrita feita alguns ciclos antes; o preditor aprende isso e passa a reter cada leitura até a escrita terminar — `r mil(cd("ordem i-k-j", "o3", "cargas_retidas"))` leituras retidas na ROI —, serializando o laço. A i-j-k acumula em registrador, sem esse padrão; suas faltas na cache são em boa parte escondidas pela execução fora de ordem.
 
 O terceiro laço funciona como experimento de controle: mantém o mesmo padrão de acesso à cache da i-k-j, mas grava Y quatro vezes menos. As leituras retidas caem para `r mil(cd("ordem i-k-j (4 k por vez)", "o3", "cargas_retidas"))` e o custo cai de `r f(cd("ordem i-k-j", "o3", "ciclos_por_mac"))` para `r f(cd("ordem i-k-j (4 k por vez)", "o3", "ciclos_por_mac"))` ciclos por multiplicação-acumulação, praticamente sem mudar as faltas de cache (`r mil(cd("ordem i-k-j", "o3", "l1d_falhas"))` contra `r mil(cd("ordem i-k-j (4 k por vez)", "o3", "l1d_falhas"))`). As Figuras [-@fig-camada] e [-@fig-varredura] completam o quadro: variando N, as faltas da i-j-k disparam quando as matrizes deixam de caber na L1; variando o tamanho da L1, o custo da i-j-k cai a partir de 32 KiB, enquanto o da i-k-j não muda, porque não é a cache que a limita.
 
@@ -490,20 +562,19 @@ O terceiro laço funciona como experimento de controle: mantém o mesmo padrão 
 largo()
 ```
 
-![Multiplicação de matrizes no o3, variando o tamanho N: custo por multiplicação-acumulação, faltas na L1D e leituras retidas pelo preditor de dependências.](`r fig("fig_camada_n")`){#fig-camada width=95%}
+![Multiplicação de matrizes no o3, variando o tamanho N: custo por multiplicação-acumulação, faltas na L1D e leituras retidas pelo preditor de dependências.](`r fig("fig_camada_n")`){#fig-camada width="95%"}
 
 ```{r}
 #| results: asis
 estreito()
 ```
 
-
 ```{r}
 #| results: asis
 largo()
 ```
 
-![Multiplicação de matrizes com N = 64 no o3, variando o tamanho da cache L1 de dados.](`r fig("fig_varredura_l1d")`){#fig-varredura width=95%}
+![Multiplicação de matrizes com N = 64 no o3, variando o tamanho da cache L1 de dados.](`r fig("fig_varredura_l1d")`){#fig-varredura width="95%"}
 
 ```{r}
 #| results: asis
@@ -521,7 +592,7 @@ A @fig-versoes junta as comparações entre versões das Seções 4.2 a 4.7. O l
 largo()
 ```
 
-![Razão entre duas versões de cada algoritmo: instruções (losango) e ciclos em cada modelo de CPU (círculos). Valores acima de 1 indicam que a segunda versão custa mais.](`r fig("fig_versoes")`){#fig-versoes width=95%}
+![Razão entre duas versões de cada algoritmo: instruções (losango) e ciclos em cada modelo de CPU (círculos). Valores acima de 1 indicam que a segunda versão custa mais.](`r fig("fig_versoes")`){#fig-versoes width="95%"}
 
 ```{r}
 #| results: asis
@@ -533,7 +604,7 @@ estreito()
 largo()
 ```
 
-![IPC de cada região de interesse nos modelos timing, minor e o3. O modelo atomic, funcional, não aparece porque seus ciclos não medem tempo.](`r fig("fig_ipc")`){#fig-ipc width=95%}
+![IPC de cada região de interesse nos modelos timing, minor e o3. O modelo atomic, funcional, não aparece porque seus ciclos não medem tempo.](`r fig("fig_ipc")`){#fig-ipc width="95%"}
 
 ```{r}
 #| results: asis
@@ -549,7 +620,7 @@ Por fim, três programas implementam o treino de modelos clássicos de aprendiza
 largo()
 ```
 
-![Mix de instruções executadas em cada região de interesse.](`r fig("fig_mix")`){#fig-mix width=95%}
+![Mix de instruções executadas em cada região de interesse.](`r fig("fig_mix")`){#fig-mix width="95%"}
 
 ```{r}
 #| results: asis

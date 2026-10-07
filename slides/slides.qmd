@@ -1,0 +1,376 @@
+---
+title: "Simulação arquitetural com o gem5 sobre RISC-V"
+subtitle: "Instalação reprodutível e exemplos básicos"
+author: "Arthur de Azevedo Grazzia · Renato Veloso Pires Filho"
+institute: "COMP0415 · Arquitetura de Computadores · DCOMP/UFS"
+lang: pt-BR
+format:
+  revealjs:
+    theme: [default, custom.scss]
+    slide-number: true
+    transition: slide
+    code-line-numbers: false
+    highlight-style: github
+    embed-resources: true
+    width: 1280
+    height: 720
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+#| include: false
+# Figuras: as do artigo (analise/saida, geradas por `make analise`) e, onde a
+# do artigo é densa demais para uma tela, recortes com letra grande feitos
+# aqui a partir do mesmo metricas.csv — mesmas cores por modelo de CPU.
+suppressPackageStartupMessages({ library(dplyr); library(readr); library(ggplot2) })
+SAIDA <- "../analise/saida"
+fig <- function(nome) file.path(SAIDA, paste0(nome, ".png"))
+m <- read_csv(file.path(SAIDA, "metricas.csv"), show_col_types = FALSE) |>
+  filter(l1d == "32KiB", l1i == "32KiB", l2 == "256KiB", clk == "1GHz")
+v <- function(prog, reg, cpu_, col, n_ = NA) {
+  x <- m |> filter(programa == prog, regiao == reg, cpu == cpu_)
+  if (!is.na(n_)) x <- filter(x, n == n_)
+  x[[col]]
+}
+br  <- function(x, d = 0) formatC(x, format = "f", digits = d, big.mark = ".", decimal.mark = ",")
+pct <- function(x, d = 1) paste0(br(100 * x, d), "%")
+
+CORES_CPU <- c(atomic = "#2a78d6", timing = "#eb6834", minor = "#1baf7a", o3 = "#eda100")
+TINTA <- "#1d2b3a"; CINZA <- "#56606b"
+tema <- theme_minimal(base_size = 22) +
+  theme(text = element_text(colour = TINTA), axis.text = element_text(colour = CINZA),
+        panel.grid.minor = element_blank(), panel.grid.major.y = element_blank(),
+        legend.position = "top", legend.justification = "left",
+        plot.background = element_rect(fill = "white", colour = NA))
+
+# barras horizontais de ciclos (mil) por versão, agrupadas por modelo de CPU
+ciclos_cpu <- function(prog, regs, cpus = c("timing", "minor", "o3"), n_ = NA) {
+  d <- m |> filter(programa == prog, regiao %in% regs, cpu %in% cpus,
+                   if (is.na(n_)) TRUE else n == n_) |>
+    mutate(regiao = factor(regiao, levels = rev(regs)),
+           cpu = factor(cpu, levels = cpus))
+  ggplot(d, aes(ciclos / 1000, regiao, fill = cpu)) +
+    geom_col(width = 0.75, colour = "white") +
+    geom_text(aes(label = br(ciclos / 1000)), hjust = -0.15, size = 6, colour = TINTA) +
+    facet_wrap(~cpu, nrow = 1, scales = "free_x") +
+    scale_fill_manual(values = CORES_CPU, guide = "none") +
+    scale_x_continuous(expand = expansion(mult = c(0, 0.35))) +
+    labs(x = "milhares de ciclos", y = NULL) + tema +
+    theme(axis.text.x = element_blank(), strip.text = element_text(size = 22, face = "bold"))
+}
+```
+
+## Por que simular um processador?
+
+::: {.columns}
+::: {.column width="33%"}
+::: centro
+[**caro**]{.numero}
+
+testar uma ideia em silício
+:::
+:::
+::: {.column width="33%"}
+::: centro
+[**opaco**]{.numero}
+
+o hardware não mostra o pipeline
+:::
+:::
+::: {.column width="33%"}
+::: centro
+[**fixo**]{.numero}
+
+trocar a cache = trocar o chip
+:::
+:::
+:::
+
+. . .
+
+::: grande
+Um simulador roda o **mesmo programa** em **microarquiteturas diferentes**
+:::
+
+::: notes
+Motivação. Simuladores permitem trocar qualquer parâmetro e ver cada evento interno; são a ferramenta central da pesquisa e do ensino de arquitetura (Akram & Sawalha 2019; Nikolić 2009).
+:::
+
+## Por que o gem5?
+
+| | ISA | Detalhe | Interface |
+|---|---|---|---|
+| **gem5** | **RISC-V**, x86, Arm | **funcional → ciclo a ciclo** | **scripts Python** |
+| QEMU | dezenas | funcional (sem tempo) | linha de comando |
+| Sniper | x86 | por intervalos | linha de comando |
+| Ripes · WebRISC-V | RISC-V | pipeline de 5 estágios | gráfica |
+| MARS | MIPS | funcional | gráfica |
+
+::: legenda
+Único com RISC-V, vários modelos de processador e estatísticas de cada componente
+:::
+
+::: notes
+Os didáticos (Ripes, WebRISC-V, MARS) têm interface gráfica, mas um único processador simples. O gem5 não tem janela nenhuma: tudo é script e arquivo de texto — por isso todas as figuras desta apresentação foram geradas por nós a partir das estatísticas.
+:::
+
+## Como o gem5 funciona
+
+![](`r fig("fig_gem5")`)
+
+::: notes
+Simulador orientado a eventos (ticks de 1 ps). Os componentes são SimObjects em C++, ligados por portas; um script Python monta o sistema. No modo SE, as chamadas de sistema do programa são atendidas pelo próprio simulador.
+:::
+
+## Quatro CPUs, quatro níveis de detalhe
+
+![](`r fig("fig_velocidade")`)
+
+::: legenda
+atomic: funcional · timing: espera a memória · minor: pipeline em ordem · o3: superescalar fora de ordem
+:::
+
+::: notes
+As quatro executam exatamente as mesmas instruções. O detalhe custa: o atomic simula ~5× mais instruções por segundo que o o3. Na prática: atomic para chegar ao ponto de interesse, detalhados para medir.
+:::
+
+## Dentro do o3
+
+![](`r fig("fig_o3")`)
+
+::: notes
+Estágios: fetch, decode, rename, dispatch, issue, execute, writeback, commit. As instruções saem da fila de emissão fora de ordem e são confirmadas em ordem pelo ROB. Dois preditores: de desvios (no fetch) e de dependência de memória (decide se um load pode passar na frente de stores). Os dois aparecem nos resultados.
+:::
+
+## O sistema simulado
+
+::: {.columns}
+::: {.column width="40%"}
+![](`r fig("fig_sistema")`){height="560"}
+:::
+::: {.column width="60%"}
+<br>
+
+- 1 núcleo **RISC-V RV64GC**, **1 GHz**
+- L1I e L1D de **32 KiB**, L2 de **256 KiB**
+- DDR3-1600, **1 GiB**
+- modo **SE**: só o programa, sem sistema operacional
+
+<br>
+
+```python
+board = SimpleBoard(clk_freq="1GHz",
+    processor=processor, memory=memory,
+    cache_hierarchy=cache)
+```
+:::
+:::
+
+::: notes
+Montado com a Standard Library do gem5 em poucas linhas de Python (se_run.py). O modelo de CPU e os tamanhos das caches são parâmetros de linha de comando.
+:::
+
+## Instalação reprodutível
+
+![](`r fig("fig_fluxo")`)
+
+::: {.columns}
+::: {.column width="50%"}
+::: centro
+[**76 min**]{.numero}
+
+compilar o gem5 (uma vez)
+:::
+:::
+::: {.column width="50%"}
+::: centro
+[**idênticos**]{.numero}
+
+binários e estatísticas · Podman × Docker
+:::
+:::
+:::
+
+::: notes
+Tudo fixado: commit do gem5, imagem base pelo digest, compilador por snapshot do apt, pacotes R pelo renv.lock. Cada simulação recebe um hash das suas entradas; o gem5 é determinístico, então mesmo hash = mesmo stats.txt. Verificado com dois motores de container.
+:::
+
+## O gem5 rodando {.alto}
+
+![](`r fig("fig_terminal")`)
+
+::: notes
+Não há interface gráfica: a saída é o terminal e o stats.txt, com milhares de estatísticas. Aqui: soma de vetor na CPU o3 e um trecho das estatísticas da região de interesse.
+:::
+
+## Medindo só o algoritmo
+
+::: {.columns}
+::: {.column width="45%"}
+```cpp
+ROI_INICIO(1);   // zera as estatísticas
+long soma = 0;
+for (int i = 0; i < N; ++i)
+    soma += v[i];
+ROI_FIM(1);      // grava as estatísticas
+```
+
+<br>
+
+::: centro
+[**`r br(v("soma_vetor", "programa inteiro", "atomic", "instrucoes"))`**]{.numero}
+
+→ **`r br(v("soma_vetor", "cache quente", "atomic", "instrucoes"))`** instruções
+:::
+:::
+::: {.column width="55%"}
+![](`r fig("fig_instrucoes")`)
+:::
+:::
+
+::: notes
+Um binário estático executa ~117 mil instruções inicializando a biblioteca C. Sem marcar a região de interesse, mediríamos a libc. As marcações (m5_work_begin/end) disparam um tratador no script que grava e zera as estatísticas.
+:::
+
+## O pipeline em ação
+
+![](`r fig("fig_pipeline_soma_vetor_roi2")`)
+
+::: legenda
+Laço da soma: 4 instruções — **uma volta por ciclo** (IPC ≈ 4)
+:::
+
+::: notes
+Reconstruído do registro O3PipeView do gem5. A cada ciclo, 4 instruções passam pelo fetch e, alguns ciclos depois, 4 pelo commit. É a "tela" que o simulador não tem.
+:::
+
+## Exemplos {.divisor background-color="#1d2b3a"}
+
+8 algoritmos clássicos · 3 de redes neurais · cada um em 2 ou 3 versões
+
+## Ordenação: o preditor de desvios
+
+```{r}
+#| fig-width: 12
+#| fig-height: 4.6
+ciclos_cpu("ordenacao", c("bubble sort (aleatório)", "bubble sort (já ordenado)", "quicksort (aleatório)"))
+```
+
+::: centro
+erros de predição no o3: **`r pct(v("ordenacao", "bubble sort (aleatório)", "o3", "erro_predicao"))`** aleatório · **`r pct(v("ordenacao", "bubble sort (já ordenado)", "o3", "erro_predicao"))`** ordenado · **`r pct(v("ordenacao", "quicksort (aleatório)", "o3", "erro_predicao"))`** quicksort
+:::
+
+::: notes
+Mesmo código do bubble sort; no vetor aleatório o desvio "troca?" é imprevisível. O quicksort executa ~7× menos instruções (O(n log n)), mas a partição erra mais predições — o ganho em ciclos é menor que o de instruções.
+:::
+
+## Busca em grafo: localidade de memória
+
+```{r}
+#| fig-width: 12
+#| fig-height: 4.2
+ciclos_cpu("grafo", c("BFS na grade", "BFS em grafo aleatório"))
+```
+
+::: centro
+**mesmas instruções** · faltas na L1D: **`r br(v("grafo", "BFS na grade", "o3", "mpki_l1d"), 1)`** → **`r br(v("grafo", "BFS em grafo aleatório", "o3", "mpki_l1d"), 1)`** por mil instruções
+:::
+
+::: notes
+O mesmo BFS em dois grafos com 4096 vértices e 4 arestas por vértice. Na grade, vizinhos ficam perto na memória; no grafo aleatório, cada aresta leva a qualquer lugar. Só a estrutura dos dados muda o tempo.
+:::
+
+## MDC: o modelo de CPU muda a conclusão
+
+```{r}
+#| fig-width: 12
+#| fig-height: 4.2
+ciclos_cpu("mdc", c("Euclides (resto)", "binário (sem divisão)"))
+```
+
+::: centro
+Euclides: menos instruções, mas cada passo espera uma **divisão de 20 ciclos**
+:::
+
+::: notes
+Euclides executa 3,7× menos instruções, mas cada passo depende do resto anterior. No timing, que conta cada instrução como um ciclo, e também no minor, Euclides é bem mais rápido; no o3, com divisão de 20 ciclos e nada para sobrepor, ele passa a ser o mais lento. Um simulador mais simples daria a conclusão oposta.
+:::
+
+## Matrizes: cache ou dependência de memória?
+
+![](`r fig("fig_varredura_l1d")`)
+
+::: centro
+i-k-j: quase sem faltas na cache, mas **2× mais lenta** no o3 — o preditor retém cada *load* de Y
+:::
+
+::: notes
+Três ordens de laço, mesmo resultado. A i-k-j é a recomendada pela teoria de cache e vence no timing; no o3, cada load de Y[i][j] vem logo após o store do mesmo endereço, e o preditor store sets o retém. Controle: a versão com 4 k por vez grava Y 4× menos — as cargas retidas caem 3,6× e o custo cai 44%. Variando a L1D: o custo da i-j-k cai com a cache; o da i-k-j não muda.
+:::
+
+## Uma versão em relação à outra
+
+![](`r fig("fig_versoes")`)
+
+::: legenda
+losango = instruções · círculos = ciclos em cada CPU
+:::
+
+::: notes
+Resumo das comparações. Quando os círculos se afastam do losango, é a microarquitetura que pesa. Destaques: BFS (mesmas instruções, ~2,6× ciclos), MDC e matrizes (o o3 inverte a conclusão).
+:::
+
+## E as redes neurais?
+
+```{r}
+#| fig-width: 12
+#| fig-height: 4.6
+mix <- read_csv(file.path(SAIDA, "mix.csv"), show_col_types = FALSE)
+NOMES <- c(soma_vetor = "soma de vetor", ordenacao = "ordenação", busca_binaria = "busca",
+           grafo = "busca em grafo", fibonacci = "Fibonacci", fatorial = "fatorial", mdc = "MDC",
+           camada_densa = "matrizes", regressao_linear = "regressão linear",
+           perceptron = "perceptron", mlp_xor = "rede neural (XOR)")
+d <- mix |> filter(cpu == "atomic", roi > 0, regiao != "ROI vazia", is.na(n) | n == 64) |>
+  group_by(programa) |>
+  summarise(fp = sum(qtd[grupo == "ponto flutuante"]) / sum(qtd), .groups = "drop") |>
+  mutate(nome = factor(NOMES[programa], levels = rev(NOMES)),
+         rede = programa %in% c("regressao_linear", "perceptron", "mlp_xor"))
+ggplot(d, aes(fp, nome, fill = rede)) +
+  geom_col(width = 0.7) +
+  geom_text(aes(label = pct(fp, 0)), hjust = -0.15, size = 6, colour = TINTA) +
+  scale_fill_manual(values = c(`TRUE` = "#eb6834", `FALSE` = "#b8c2cc"), guide = "none") +
+  scale_x_continuous(labels = NULL, expand = expansion(mult = c(0, 0.15))) +
+  labs(x = "instruções de ponto flutuante", y = NULL) + tema
+```
+
+::: notes
+Regressão linear, perceptron e uma rede 2-4-1 aprendendo XOR, conferidos contra Python até a 6ª casa. O que os distingue no simulador é o ponto flutuante: nenhuma instrução FP nos clássicos, exceto a multiplicação de matrizes (que é o núcleo de uma camada densa).
+:::
+
+## O que o simulador mostrou
+
+::: incremental
+1.  O desempenho vem de **como** a microarquitetura executa, não só de **quantas** instruções
+2.  Um modelo simples demais pode dar a **conclusão errada** (MDC, matrizes)
+3.  Medir sem região de interesse mede a **biblioteca C**, não o algoritmo
+4.  Container + hash por simulação: resultados **reprodutíveis**
+:::
+
+::: notes
+Dificuldades: compilar o gem5 (mais de 1 h, muitas dependências), a inicialização da libc, e um controle que não funcionou (zerar o preditor de dependências não mudou nada). Trabalhos futuros: modo full system, Ruby/multinúcleo, extensão vetorial RVV.
+:::
+
+## Obrigado {.centro}
+
+<br>
+
+::: grande
+gem5 · RISC-V · 11 programas · 4 CPUs · 60 simulações
+:::
+
+<br>
+
+[\[LINK DO REPOSITÓRIO\]]{.discreto}

@@ -1,0 +1,37 @@
+/*-- scss:defaults --*/
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Newsreader:ital,wght@0,500;1,400&family=JetBrains+Mono&display=swap');
+
+// fundo branco, igual ao das figuras geradas por analise/relatorio.R
+$body-bg: #ffffff;
+$body-color: #1d2b3a;
+$link-color: #c8642a;
+$font-family-sans-serif: Inter, sans-serif;
+$font-family-monospace: 'JetBrains Mono', monospace;
+$presentation-heading-font: Newsreader, serif;
+$presentation-heading-color: #1d2b3a;
+$presentation-heading-font-weight: 500;
+$presentation-font-size-root: 34px;
+$presentation-h2-font-size: 1.4em;
+$code-block-font-size: 0.6em;
+
+/*-- scss:rules --*/
+.reveal strong { color: #c8642a; }
+.reveal h2 { border-bottom: 1px solid #e3ded6; padding-bottom: 0.2em; }
+.reveal table { font-size: 0.68em; }
+.reveal table th { background: #1d2b3a; color: #ffffff; }
+.reveal .centro { text-align: center; }
+.reveal .legenda { text-align: center; font-family: Newsreader, serif; font-style: italic; color: #56606b; font-size: 0.8em; }
+.reveal .grande { text-align: center; font-family: Newsreader, serif; font-size: 1.6em; margin-top: 0.3em; }
+.reveal .numero { font-family: Newsreader, serif; font-size: 2.6em; color: #c8642a; line-height: 1; }
+.reveal .discreto { color: #56606b; font-size: 0.7em; }
+.reveal div.sourceCode { border-radius: 8px; }
+.reveal img { max-height: 560px; }
+.reveal .alto img { max-height: 600px; }
+
+.reveal .divisor h2 { color: #ffffff; border: none; font-size: 2.6em; margin-top: 4.5em; text-align: center; }
+.reveal .divisor p { color: #b8c2cc; text-align: center; font-family: Newsreader, serif; font-style: italic; }
+
+/* capa */
+.reveal #title-slide .title { font-family: Newsreader, serif; font-size: 1.9em; }
+.reveal #title-slide .subtitle { font-family: Newsreader, serif; font-style: italic; color: #56606b; }
+.reveal #title-slide .quarto-title-author-name, .reveal #title-slide .institute { color: #56606b; font-size: 0.8em; }

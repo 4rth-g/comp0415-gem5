@@ -10,6 +10,7 @@
 #   make analise    tabelas, gráficos e diagrama do sistema (analise/)
 #   make testar     testes do parser de estatísticas (analise/testes.R)
 #   make artigo     artigo/artigo.docx e artigo/artigo.pdf (Typst) no modelo da disciplina
+#   make slides     slides/slides.html (revealjs, arquivo único; S = notas do apresentador)
 #   make tudo       bin + sim + varredura + visual + analise + artigo
 #
 # Reprodução (em outra máquina, ou para conferir esta):
@@ -43,9 +44,9 @@ LDLIBS   := -L/gem5/util/m5/build/riscv/out -lm5
 PROGS := $(filter-out camada_densa,$(basename $(notdir $(wildcard exemplos/*.cpp))))
 BINS  := $(PROGS:%=bin/%_riscv) $(TAMANHOS:%=bin/camada_densa_N%_riscv)
 
-.PHONY: tudo bin conferir sim varredura visual analise artigo testar \
+.PHONY: tudo bin conferir sim varredura visual analise artigo slides testar \
         verificar reproduzir limpar
-tudo: bin sim varredura visual analise artigo
+tudo: bin sim varredura visual analise artigo slides
 
 bin: bin/SHA256SUMS
 
@@ -86,6 +87,9 @@ artigo:
 	python3 artigo/preparar_modelo.py
 	quarto render artigo/artigo.qmd --to docx
 	quarto render artigo/artigo.qmd --to typst
+
+slides:
+	quarto render slides/slides.qmd
 
 testar:
 	Rscript analise/testes.R
