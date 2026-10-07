@@ -11,6 +11,7 @@
 #   make testar     testes do parser de estatísticas (analise/testes.R)
 #   make artigo     artigo/artigo.docx e artigo/artigo.pdf (Typst) no modelo da disciplina
 #   make slides     slides/slides.html (revealjs, arquivo único; S = notas do apresentador)
+#   make slides-pdf slides/slides.pdf (impressão do revealjs via Chromium headless)
 #   make tudo       bin + sim + varredura + visual + analise + artigo
 #
 # Reprodução (em outra máquina, ou para conferir esta):
@@ -44,7 +45,7 @@ LDLIBS   := -L/gem5/util/m5/build/riscv/out -lm5
 PROGS := $(filter-out camada_densa,$(basename $(notdir $(wildcard exemplos/*.cpp))))
 BINS  := $(PROGS:%=bin/%_riscv) $(TAMANHOS:%=bin/camada_densa_N%_riscv)
 
-.PHONY: tudo bin conferir sim varredura visual analise artigo slides testar \
+.PHONY: tudo bin conferir sim varredura visual analise artigo slides slides-pdf testar \
         verificar reproduzir limpar
 tudo: bin sim varredura visual analise artigo slides
 
@@ -90,6 +91,16 @@ artigo:
 
 slides:
 	quarto render slides/slides.qmd
+
+# Chromium do sistema ou, na falta, o do Playwright (~/.cache/ms-playwright)
+CHROME ?= $(firstword $(shell command -v chromium chromium-browser google-chrome 2>/dev/null) \
+            $(wildcard $(HOME)/.cache/ms-playwright/chromium-*/chrome-linux64/chrome))
+slides-pdf: slides
+	@test -n "$(CHROME)" || { echo "Chromium não encontrado: defina CHROME=/caminho/do/chrome"; exit 1; }
+	"$(CHROME)" --headless=new --no-sandbox --disable-gpu --no-pdf-header-footer \
+	  --run-all-compositor-stages-before-draw \
+	  --virtual-time-budget=60000 --print-to-pdf=slides/slides.pdf \
+	  "file://$(CURDIR)/slides/slides.html?print-pdf"
 
 testar:
 	Rscript analise/testes.R

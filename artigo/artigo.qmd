@@ -411,7 +411,7 @@ Um binário estático executa cerca de `r mil(fora_fib)` instruções fora do al
 
 # 4. Exemplos Básicos no Simulador
 
-Os onze programas da @tbl-programas incluem oito algoritmos típicos de disciplinas de programação — soma, ordenação, busca, busca em grafo, Fibonacci, fatorial, máximo divisor comum e multiplicação de matrizes — e, ao final, três exemplos de redes neurais. Cada programa compara duas ou três versões do mesmo cálculo, escolhidas para isolar um mecanismo do processador; todos foram executados nos quatro modelos de CPU. A @fig-instrucoes mostra por que medir só as ROIs é necessário.
+Os onze programas da @tbl-programas incluem oito algoritmos típicos de disciplinas de programação — soma, ordenação, busca, busca em grafo, Fibonacci, fatorial, máximo divisor comum e multiplicação de matrizes — e, ao final, três exemplos de redes neurais. Cada programa compara duas ou três versões do mesmo cálculo, escolhidas para isolar um mecanismo do processador; todos foram executados nos quatro modelos de CPU. As métricas são as usuais de avaliação de processadores [@lilja2000measuring; @hennessy2017quantitative]: instruções executadas, ciclos, IPC (instruções por ciclo, o inverso do CPI), *misses* de cache por mil instruções e taxa de *misprediction* dos desvios. A @fig-instrucoes mostra por que medir só as ROIs é necessário.
 
 ```{r}
 #| results: asis

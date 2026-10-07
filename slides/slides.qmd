@@ -313,10 +313,39 @@ Três ordens de laço, mesmo resultado. A i-k-j é a recomendada pela teoria de 
 
 ## Uma versão em relação à outra
 
-![](`r fig("fig_versoes")`)
+```{r}
+#| fig-width: 12
+#| fig-height: 5.4
+pares <- tibble::tribble(
+  ~programa,       ~n,  ~a,                        ~b,                        ~rotulo,
+  "ordenacao",     NA,  "bubble sort (aleatório)", "quicksort (aleatório)",   "quicksort ÷ bubble",
+  "busca_binaria", NA,  "busca linear",            "busca binária",           "binária ÷ linear",
+  "grafo",         NA,  "BFS na grade",            "BFS em grafo aleatório",  "BFS: aleatório ÷ grade",
+  "fatorial",      NA,  "iterativo (2000×)",       "recursivo (2000×)",       "fatorial: recursivo ÷ iterativo",
+  "mdc",           NA,  "Euclides (resto)",        "binário (sem divisão)",   "MDC: binário ÷ Euclides",
+  "camada_densa",  64,  "ordem i-j-k",             "ordem i-k-j",             "matrizes: i-k-j ÷ i-j-k")
+razao <- function(prog, n_, a, b) {
+  d <- m |> filter(programa == prog, if (is.na(n_)) is.na(n) else n == n_)
+  inner_join(filter(d, regiao == a), filter(d, regiao == b), by = "cpu", suffix = c("_a", "_b")) |>
+    transmute(cpu, instr = instrucoes_b / instrucoes_a, ciclos = ciclos_b / ciclos_a)
+}
+d <- pares |> mutate(r = purrr::pmap(list(programa, n, a, b), razao)) |> tidyr::unnest(r) |>
+  mutate(rotulo = factor(rotulo, levels = rev(pares$rotulo)))
+ggplot(filter(d, cpu %in% c("timing", "minor", "o3")) |>
+         mutate(cpu = factor(cpu, levels = c("timing", "minor", "o3"))), aes(y = rotulo)) +
+  geom_vline(xintercept = 1, colour = CINZA) +
+  geom_point(data = distinct(d, rotulo, instr), aes(x = instr), shape = 23, size = 6,
+             fill = "white", colour = TINTA, stroke = 1.2) +
+  geom_point(aes(x = ciclos, colour = cpu), size = 5, alpha = 0.9) +
+  scale_x_log10(breaks = c(0.01, 0.1, 1, 4), labels = c("÷100", "÷10", "igual", "×4")) +
+  scale_colour_manual(values = CORES_CPU, name = "ciclos no") +
+  coord_cartesian(clip = "off") +
+  labs(x = "← 2ª versão mais barata          2ª versão mais cara →", y = NULL) +
+  tema + theme(legend.position = "top", axis.title.x = element_text(colour = CINZA, face = "italic"))
+```
 
 ::: legenda
-losango = instruções · círculos = ciclos em cada CPU
+◇ instruções (iguais em todo modelo) · ● ciclos em cada CPU
 :::
 
 ::: notes

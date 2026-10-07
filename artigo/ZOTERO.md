@@ -5,7 +5,7 @@ corrigido e completo, e o artigo pode usá-lo agora. Depois dos passos abaixo,
 o auto-export do Better BibTeX passa a regerá-lo a partir do Zotero, com as
 **mesmas chaves**.
 
-Metadados conferidos em 2026-10-07 no Crossref/DataCite (doi.org).
+Metadados conferidos em 2026-10-07 no Crossref/DataCite (doi.org); os DOIs das obras novas de algoritmos (Hoare, Stein), também.
 
 ## Estado encontrado (cópia do `zotero.sqlite`, só leitura)
 
@@ -21,7 +21,7 @@ Metadados conferidos em 2026-10-07 no Crossref/DataCite (doi.org).
 - [ ] Renomear `Arquitetura de Computadores › referencias` para **`Av1 · Simuladores`**.
 - [ ] Conferir a lixeira e depois esvaziá-la (são as cópias já mescladas).
 
-## 2. Importar as 6 obras novas
+## 2. Importar as 10 obras novas
 
 `File › Import…` › `artigo/zotero_novos.bib` › opção para colocar na coleção
 `Av1 · Simuladores`.
@@ -34,6 +34,10 @@ Metadados conferidos em 2026-10-07 no Crossref/DataCite (doi.org).
 | `rosenblatt1958perceptron` | Rosenblatt 1958 | exemplo do perceptron |
 | `rumelhart1986backprop` | Rumelhart, Hinton & Williams 1986 | exemplo MLP-XOR |
 | `lowepower2026learning` | *Learning gem5* (documentação) | uso da biblioteca padrão do gem5 |
+| `cormen2022algorithms` | Cormen et al., *Introduction to Algorithms*, 4ª ed., 2022 | busca binária, quicksort e BFS |
+| `hoare1962quicksort` | Hoare, *Quicksort*, The Computer Journal, 1962 | exemplo de ordenação |
+| `knuth1997seminumerical` | Knuth, *TAOCP* vol. 2, 3ª ed., 1997 | algoritmo de Euclides |
+| `stein1967binarygcd` | Stein, J. Comput. Phys., 1967 | MDC binário |
 
 ## 3. Corrigir os itens existentes
 
@@ -58,7 +62,7 @@ editar, ela fica fixada) e aplicar as correções.
 | MARS | `vollmar2006mars` | — |
 | MIPS Processor Implemented in a Visual Simulator… | `rodrigues2024mips` | nomes: Rodrigues, Christofer; Gonçalves, Rogério Aparecido; Fabrício Filho, João |
 | The gem5 Simulator | `binkert2011gem5` | — |
-| The gem5 Simulator: Version 20.0+ | `lowepower2020gem5v20` | — |
+| The gem5 Simulator: Version 20.0+ | `lowepower2020gem5v20` | tipo *Journal Article*, periódico "arXiv preprint arXiv:2007.03152" (evita a pontuação dupla "20.0+.," no ABNT) |
 | Enabling Reproducible and Agile Full-System Simulation | `bruce2021gem5art` | **ordem dos autores** (Bruce é o 1º): Bruce, Akram, Nguyen, Roarty, Samani, Fariborz, Reddy, Sinclair, Lowe-Power; **DOI 10.1109/ISPASS51385.2021.00035**; páginas 183–193 |
 | Toward Reproducible and Standardized… | `pai2026gem5` | **publicado no ISPASS 2026**: tipo *Conference Paper*; autores Pai, Kunal; Patel, Harshil; Le, Erin; Krim, Noah; Samani, Mahyar; Bruce, Bobby R.; Lowe-Power, Jason (não "The gem5 community"); ano 2026; páginas 184–196; **DOI 10.1109/ISPASS69572.2026.00027** |
 | Abordagem para Aprendizado do Simulador gem5… | `rigotto2023gem5` | evento: **WSCAD 2023** (Anais Estendidos do XXIV Simpósio em Sistemas Computacionais de Alto Desempenho); Freitas, Henrique Cota de; páginas 9–16; **DOI 10.5753/wscad_estendido.2023.235800** |
