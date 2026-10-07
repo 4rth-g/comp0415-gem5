@@ -43,13 +43,13 @@ PREFIXO_MIX <- paste0(P, "commitStats0.committedInstType::")
 # classes de instrução do gem5 -> grupos do artigo
 grupo_mix <- function(classe) case_when(
   str_starts(classe, "Int")                     ~ "inteiro",
-  classe %in% c("MemRead", "FloatMemRead")      ~ "leitura de memória",
-  classe %in% c("MemWrite", "FloatMemWrite")    ~ "escrita em memória",
+  classe %in% c("MemRead", "FloatMemRead")      ~ "load",
+  classe %in% c("MemWrite", "FloatMemWrite")    ~ "store",
   str_starts(classe, "Float")                   ~ "ponto flutuante",
   TRUE                                          ~ "outros"
 )
-GRUPOS <- c("inteiro", "ponto flutuante", "leitura de memória",
-            "escrita em memória", "outros")
+GRUPOS <- c("inteiro", "ponto flutuante", "load",
+            "store", "outros")
 
 # ---- stats.txt ----------------------------------------------------------------
 

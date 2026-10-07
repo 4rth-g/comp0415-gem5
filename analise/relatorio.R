@@ -144,8 +144,8 @@ g4 <- ggplot(d4, aes(erro_predicao, rotulo_roi, fill = cpu,
             hjust = -0.15, size = 2.3, colour = TINTA2) +
   scale_fill_manual(values = CORES_CPU, name = NULL) +
   scale_x_continuous(labels = pct(1), expand = expansion(mult = c(0, 0.15))) +
-  labs(x = "desvios condicionais com predição errada", y = NULL,
-       title = "Erro de predição de desvios por região de interesse") +
+  labs(x = "branch mispredictions (fração dos desvios condicionais)", y = NULL,
+       title = "Branch mispredictions por região de interesse") +
   tema + theme(panel.grid.major.y = element_blank())
 salvar(g4, "fig_predicao", h = 0.3 * n_distinct(d4$rotulo_roi) + 1)
 
@@ -168,16 +168,17 @@ linhas <- function(d, x, metricas, rotulo_x, escala_x) {
 }
 log2_x <- function(br) scale_x_continuous(trans = "log2", breaks = br,
                                           expand = expansion(mult = 0.06))
-MEM <- c(ciclos_por_mac = "ciclos por multiplicação-acumulação",
-         mpki_l1d = "falhas na L1D por mil instruções",
-         retidas_por_mac = "cargas retidas por mult.-acumulação")
+# MAC = multiply-accumulate (uma multiplicação-acumulação do produto)
+MEM <- c(ciclos_por_mac = "ciclos por MAC",
+         mpki_l1d = "misses na L1D por mil instruções",
+         retidas_por_mac = "loads retidos por MAC")
 
 por_mac <- function(d) mutate(d, retidas_por_mac = cargas_retidas / n^3)
 d5 <- base |> filter(programa == "camada_densa", cpu == "o3", roi > 0) |> por_mac()
 salvar(linhas(d5, n, MEM, "N (matrizes N×N de double)", log2_x(c(16, 32, 64, 128))) +
          labs(title = "Multiplicação de matrizes: mesma conta, três ordens de laço (CPU o3)",
               subtitle = paste("L1D = 32 KiB: com N = 32 as três matrizes cabem; com N = 64 já não.",
-                               "Na i-k-j, o o3 retém cada leitura de Y até a escrita anterior terminar.",
+                               "Na i-k-j, o o3 retém cada load de Y até o store anterior terminar.",
                                sep = "\n")),
        "fig_camada_n", w = 7.5, h = 3.5)
 
@@ -350,14 +351,14 @@ config <- tribble(
   "minor", "Pipeline", sprintf("em ordem; decodifica %s, emite %s, confirma %s instruções/ciclo; %s acesso(s) à memória/ciclo",
                                k(mn, CORE, "decodeInputWidth"), k(mn, CORE, "executeIssueLimit"),
                                k(mn, CORE, "executeCommitLimit"), k(mn, CORE, "executeMemoryIssueLimit")),
-  "minor", "Preditor de desvios", bp_txt(mn),
+  "minor", "Branch predictor", bp_txt(mn),
   "o3", "Pipeline", sprintf("fora de ordem; largura %s (busca, decodificação, renomeação, emissão, confirmação)",
                             k(o3, CORE, "fetchWidth")),
-  "o3", "Janela", sprintf("ROB %s; fila de cargas %s, de escritas %s; %s registradores físicos inteiros e %s de ponto flutuante",
+  "o3", "Janela", sprintf("ROB %s; load queue %s, store queue %s; %s registradores físicos inteiros e %s de ponto flutuante",
                           k(o3, CORE, "numROBEntries"), k(o3, CORE, "LQEntries"), k(o3, CORE, "SQEntries"),
                           k(o3, CORE, "numPhysIntRegs"), k(o3, CORE, "numPhysFloatRegs")),
-  "o3", "Preditor de desvios", bp_txt(o3),
-  "o3", "Dependência de memória", sprintf("store sets (SSIT %s, LFST %s), zerado a cada %s acessos à memória",
+  "o3", "Branch predictor", bp_txt(o3),
+  "o3", "Memory dependence predictor", sprintf("store sets (SSIT %s, LFST %s), zerado a cada %s acessos à memória",
                                           k(o3, CORE, "SSITSize"), k(o3, CORE, "LFSTSize"),
                                           num()(as.numeric(k(o3, CORE, "store_set_clear_period"))))
 )
@@ -393,17 +394,17 @@ writeLines(c(
   estagio("dispatch", "dispatch"), estagio("issue", "issue"), estagio("execute", "execute"),
   estagio("wb", "writeback"), estagio("commit", "commit"),
   "  fetch -> decode -> rename -> dispatch -> issue -> execute -> wb -> commit [weight=10];",
-  # acima da linha: preditor de desvios, fila de emissão, ROB
-  sprintf('  bp  [label="preditor de desvios\\n(%s)", fillcolor="#fbe3d6"];',
+  # acima da linha: branch predictor, issue queue, ROB
+  sprintf('  bp  [label="branch predictor\\n(%s)", fillcolor="#fbe3d6"];',
           k(o3, paste0(CORE, ".branchPred.conditionalBranchPred"), "type")),
-  sprintf('  iq  [label="fila de emissão (IQ)\\n%s entradas", shape=box3d];',
+  sprintf('  iq  [label="issue queue (IQ)\\n%s entradas", shape=box3d];',
           k(o3, paste0(CORE, ".instQueues"), "numEntries")),
   sprintf('  rob [label="reorder buffer (ROB)\\n%s entradas", shape=box3d];', k(o3, CORE, "numROBEntries")),
-  # abaixo da linha: L1I, unidades funcionais, LSQ, preditor de dependência, L1D
+  # abaixo da linha: L1I, functional units, LSQ, memory dependence predictor, L1D
   '  l1i [label="L1I"];',
-  '  ss  [label="preditor de dependência\\nde memória (store sets)", fillcolor="#fbe3d6"];',
-  '  fu  [label="unidades funcionais\\nALU · mul/div · FP"];',
-  sprintf('  lsq [label="fila de loads/stores\\nLQ %s · SQ %s", shape=box3d];',
+  '  ss  [label="memory dependence\\npredictor (store sets)", fillcolor="#fbe3d6"];',
+  '  fu  [label="functional units\\nALU · mul/div · FP"];',
+  sprintf('  lsq [label="load/store queue (LSQ)\\nLQ %s · SQ %s", shape=box3d];',
           k(o3, CORE, "LQEntries"), k(o3, CORE, "SQEntries")),
   '  l1d [label="L1D"];',
   "  bp -> fetch [style=dashed]; l1i -> fetch;",
@@ -425,14 +426,14 @@ if (requireNamespace("flextable", quietly = TRUE)) {
   # ROIs na CPU o3
   rois |> filter(cpu == "o3") |>
     transmute(Programa = rotulo, `Região` = regiao, `Instruções` = instrucoes,
-              Ciclos = ciclos, IPC = ipc, `Falhas L1D/mil instr.` = mpki_l1d,
-              `Erro de predição` = erro_predicao) |>
+              Ciclos = ciclos, IPC = ipc, `Misses L1D/mil instr.` = mpki_l1d,
+              `Branch mispredictions` = erro_predicao) |>
     flextable() |>
     colformat_double(j = c("Instruções", "Ciclos"), digits = 0, big.mark = ".",
                      decimal.mark = ",") |>
-    colformat_double(j = c("IPC", "Falhas L1D/mil instr."), digits = 2,
+    colformat_double(j = c("IPC", "Misses L1D/mil instr."), digits = 2,
                      big.mark = ".", decimal.mark = ",") |>
-    set_formatter(`Erro de predição` = fmt_pct) |>
+    set_formatter(`Branch mispredictions` = fmt_pct) |>
     merge_v(j = "Programa") |> theme_booktabs() |> autofit() |>
     save_as_docx(path = file.path(DIR_OUT, "tabela_rois_o3.docx"))
 

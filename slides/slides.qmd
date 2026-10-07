@@ -142,7 +142,7 @@ As quatro executam exatamente as mesmas instruções. O detalhe custa: o atomic 
 ![](`r fig("fig_o3")`)
 
 ::: notes
-Estágios: fetch, decode, rename, dispatch, issue, execute, writeback, commit. As instruções saem da fila de emissão fora de ordem e são confirmadas em ordem pelo ROB. Dois preditores: de desvios (no fetch) e de dependência de memória (decide se um load pode passar na frente de stores). Os dois aparecem nos resultados.
+Estágios: fetch, decode, rename, dispatch, issue, execute, writeback, commit. As instruções saem da issue queue fora de ordem e são confirmadas em ordem pelo ROB. Dois preditores: o branch predictor (no fetch) e o memory dependence predictor (decide se um load pode passar na frente de stores). Os dois aparecem nos resultados.
 :::
 
 ## O sistema simulado
@@ -251,7 +251,7 @@ Reconstruído do registro O3PipeView do gem5. A cada ciclo, 4 instruções passa
 
 8 algoritmos clássicos · 3 de redes neurais · cada um em 2 ou 3 versões
 
-## Ordenação: o preditor de desvios
+## Ordenação: o *branch predictor*
 
 ```{r}
 #| fig-width: 12
@@ -260,7 +260,7 @@ ciclos_cpu("ordenacao", c("bubble sort (aleatório)", "bubble sort (já ordenado
 ```
 
 ::: centro
-erros de predição no o3: **`r pct(v("ordenacao", "bubble sort (aleatório)", "o3", "erro_predicao"))`** aleatório · **`r pct(v("ordenacao", "bubble sort (já ordenado)", "o3", "erro_predicao"))`** ordenado · **`r pct(v("ordenacao", "quicksort (aleatório)", "o3", "erro_predicao"))`** quicksort
+*mispredictions* no o3: **`r pct(v("ordenacao", "bubble sort (aleatório)", "o3", "erro_predicao"))`** aleatório · **`r pct(v("ordenacao", "bubble sort (já ordenado)", "o3", "erro_predicao"))`** ordenado · **`r pct(v("ordenacao", "quicksort (aleatório)", "o3", "erro_predicao"))`** quicksort
 :::
 
 ::: notes
@@ -276,7 +276,7 @@ ciclos_cpu("grafo", c("BFS na grade", "BFS em grafo aleatório"))
 ```
 
 ::: centro
-**mesmas instruções** · faltas na L1D: **`r br(v("grafo", "BFS na grade", "o3", "mpki_l1d"), 1)`** → **`r br(v("grafo", "BFS em grafo aleatório", "o3", "mpki_l1d"), 1)`** por mil instruções
+**mesmas instruções** · *misses* na L1D: **`r br(v("grafo", "BFS na grade", "o3", "mpki_l1d"), 1)`** → **`r br(v("grafo", "BFS em grafo aleatório", "o3", "mpki_l1d"), 1)`** por mil instruções
 :::
 
 ::: notes
@@ -304,11 +304,11 @@ Euclides executa 3,7× menos instruções, mas cada passo depende do resto anter
 ![](`r fig("fig_varredura_l1d")`)
 
 ::: centro
-i-k-j: quase sem faltas na cache, mas **2× mais lenta** no o3 — o preditor retém cada *load* de Y
+i-k-j: quase sem *misses* na cache, mas **2× mais lenta** no o3 — o preditor retém cada *load* de Y
 :::
 
 ::: notes
-Três ordens de laço, mesmo resultado. A i-k-j é a recomendada pela teoria de cache e vence no timing; no o3, cada load de Y[i][j] vem logo após o store do mesmo endereço, e o preditor store sets o retém. Controle: a versão com 4 k por vez grava Y 4× menos — as cargas retidas caem 3,6× e o custo cai 44%. Variando a L1D: o custo da i-j-k cai com a cache; o da i-k-j não muda.
+Três ordens de laço, mesmo resultado. A i-k-j é a recomendada pela teoria de cache e vence no timing; no o3, cada load de Y[i][j] vem logo após o store do mesmo endereço, e o preditor store sets o retém. Controle: a versão com 4 k por vez grava Y 4× menos — os loads retidos caem 3,6× e o custo cai 44%. Variando a L1D: o custo da i-j-k cai com a cache; o da i-k-j não muda.
 :::
 
 ## Uma versão em relação à outra
@@ -360,7 +360,7 @@ Regressão linear, perceptron e uma rede 2-4-1 aprendendo XOR, conferidos contra
 :::
 
 ::: notes
-Dificuldades: compilar o gem5 (mais de 1 h, muitas dependências), a inicialização da libc, e um controle que não funcionou (zerar o preditor de dependências não mudou nada). Trabalhos futuros: modo full system, Ruby/multinúcleo, extensão vetorial RVV.
+Dificuldades: compilar o gem5 (mais de 1 h, muitas dependências), a inicialização da libc, e um controle que não funcionou (zerar o memory dependence predictor não mudou nada). Trabalhos futuros: modo full system, Ruby/multinúcleo, extensão vetorial RVV.
 :::
 
 ## Obrigado {.centro}

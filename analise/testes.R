@@ -70,7 +70,7 @@ confere("erro de predição da ROI 2 = 8/80", der$erro_predicao[3], 0.1)
 
 m <- s$mix |> filter(roi == 2) |> arrange(grupo)
 confere("mix da ROI 2 agrupado (FP + escrita)",
-        setNames(m$qtd, m$grupo), c(`escrita em memória` = 200, `ponto flutuante` = 200))
+        setNames(m$qtd, m$grupo), c(`ponto flutuante` = 200, store = 200))
 
 um <- tempfile(fileext = ".txt"); writeLines(dump(10, 20), um)
 confere("sem ROI: só o programa inteiro", segmentar(ler_dumps(um))$cont$roi, 0L)
