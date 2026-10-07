@@ -1,0 +1,16 @@
+Global frequency set at 1000000000000 ticks per second
+Redirecting stdout to resultados/soma_vetor_timing_20261006T222141_d6298ef9e3/simout.txt
+Redirecting stderr to resultados/soma_vetor_timing_20261006T222141_d6298ef9e3/simerr.txt
+gem5 Simulator System.  https://www.gem5.org
+gem5 is copyrighted software; use the --copyright option for details.
+
+gem5 version 25.1.0.1
+gem5 compiled Sep 25 2026 02:41:57
+gem5 started Oct  7 2026 01:21:43
+gem5 executing on 3b37557bfd53, pid 1
+command line: /gem5/build/RISCV/gem5.opt --outdir=resultados/soma_vetor_timing_20261006T222141_d6298ef9e3 --redirect-stdout --redirect-stderr configs_local/se_run.py bin/soma_vetor_riscv --cpu timing --l1d 32KiB --l1i 32KiB --l2 256KiB --clk 1GHz
+
+info: Standard input is not a terminal, disabling listeners.
+>>> Rodando bin/soma_vetor_riscv com CPU=timing L1D=32KiB L1I=32KiB L2=256KiB clk=1GHz
+soma de 4096 elementos = 2066838
+>>> Simulação concluída.

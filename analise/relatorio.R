@@ -25,6 +25,9 @@ DIR_RES <- "resultados"
 DIR_OUT <- "analise/saida"
 CONFIG  <- "configs_local/se_run.py"
 dir.create(DIR_OUT, recursive = TRUE, showWarnings = FALSE)
+# saídas são regeneráveis: apaga as da rodada anterior (inclusive de figuras
+# que deixaram de existir)
+unlink(list.files(DIR_OUT, "^(fig|tabela)_.*\\.(pdf|png|docx)$", full.names = TRUE))
 
 CPUS <- c("atomic", "timing", "minor", "o3")
 BASE <- list(l1d = "32KiB", l1i = "32KiB", l2 = "256KiB", clk = "1GHz")
@@ -43,7 +46,10 @@ CONTADORES <- c(
   l2_falhas       = paste0(C, "l2-cache-0.overallMisses::total"),
   l2_acessos      = paste0(C, "l2-cache-0.overallAccesses::total"),
   desvios         = paste0(P, "branchPred.condPredicted"),   # só minor e o3
-  desvios_errados = paste0(P, "branchPred.condIncorrect")
+  desvios_errados = paste0(P, "branchPred.condIncorrect"),
+  # o3: cargas que o preditor de dependência de memória (store sets) segurou
+  # até uma escrita anterior terminar
+  cargas_retidas  = paste0(P, "MemDepUnit__0.conflictingLoads")
 )
 PREFIXO_MIX <- paste0(P, "commitStats0.committedInstType::")
 
@@ -151,7 +157,10 @@ dados <- list_rbind(map(execucoes, "cont")) |>
          mpki_l1d       = 1000 * l1d_falhas / instrucoes,
          taxa_falha_l1d = l1d_falhas / l1d_acessos,
          taxa_falha_l2  = l2_falhas / l2_acessos,
-         erro_predicao  = desvios_errados / desvios) |>
+         erro_predicao  = desvios_errados / desvios,
+         # camada densa: N³ multiplicações-acumulações por ROI
+         ciclos_por_mac = if_else(programa == "camada_densa" & roi > 0,
+                                  ciclos / n^3, NA_real_)) |>
   arrange(programa, n, roi, cpu)
 mix <- list_rbind(map(execucoes, "mix")) |>
   semi_join(dados, by = c("execucao", "roi")) |>
@@ -210,7 +219,7 @@ g1 <- ggplot(d1, aes(instrucoes, rotulo)) +
   geom_text(aes(label = num()(instrucoes), colour = medida,
                 hjust = if_else(medida == "programa inteiro", -0.25, 1.25)),
             size = 2.6, show.legend = FALSE) +
-  scale_x_log10(labels = num(), expand = expansion(mult = 0.15)) +
+  scale_x_log10(labels = num(), expand = expansion(mult = c(0.15, 0.3))) +
   scale_colour_manual(values = c(`programa inteiro` = PALETA[2],
                                  `só as ROIs` = PALETA[1]), name = NULL) +
   labs(x = "instruções simuladas (escala log)", y = NULL,
@@ -222,14 +231,15 @@ salvar(g1, "fig_instrucoes", h = 3.2)
 g2 <- ggplot(rois, aes(cpu, ipc, fill = cpu)) +
   geom_col(width = 0.75, colour = "white", linewidth = 0.4) +
   geom_text(aes(label = num(0.01)(ipc)), vjust = -0.4, size = 2.3, colour = TINTA2) +
-  facet_wrap(~rotulo_roi, ncol = 4, labeller = label_wrap_gen(28)) +
+  facet_wrap(~rotulo_roi, ncol = 4, labeller = label_wrap_gen(24)) +
   scale_fill_manual(values = CORES_CPU, guide = "none") +
   scale_y_continuous(labels = num(0.1), expand = expansion(mult = c(0, 0.18))) +
   labs(x = "modelo de CPU", y = "IPC (instruções por ciclo)",
        title = "IPC por modelo de CPU em cada região de interesse",
        caption = "atomic: modelo funcional; seus ciclos são aproximados, não cycle-accurate.") +
   tema + theme(panel.grid.major.x = element_blank(),
-               strip.text = element_text(size = 7))
+               axis.text.x = element_text(size = 6.5),
+               strip.text = element_text(size = 7, lineheight = 0.9))
 salvar(g2, "fig_ipc", h = 6.5)
 
 # 3) mix de instruções por ROI (não depende da CPU; usa o atomic) --------------
@@ -238,21 +248,24 @@ d3 <- mix |> semi_join(rois |> filter(cpu == "atomic"), by = c("execucao", "roi"
   group_by(rotulo_roi) |> mutate(frac = qtd / sum(qtd)) |> ungroup() |>
   mutate(rotulo_roi = factor(rotulo_roi, levels = rev(levels(rois$rotulo_roi))))
 g3 <- ggplot(d3, aes(frac, rotulo_roi, fill = grupo)) +
-  geom_col(width = 0.7, colour = "white", linewidth = 0.5) +
+  geom_col(width = 0.7, colour = "white", linewidth = 0.5,
+           position = position_stack(reverse = TRUE)) +
   geom_text(aes(label = if_else(frac >= 0.08, pct(1)(frac), "")),
-            position = position_stack(vjust = 0.5), size = 2.3, colour = "white") +
+            position = position_stack(vjust = 0.5, reverse = TRUE),
+            size = 2.3, colour = "white") +
   scale_fill_manual(values = setNames(PALETA, GRUPOS), name = NULL) +
-  scale_x_continuous(labels = pct(1), expand = expansion(mult = 0)) +
+  scale_x_continuous(labels = pct(1), expand = expansion(mult = c(0, 0.03))) +
   labs(x = "fração das instruções executadas", y = NULL,
        title = "Mix de instruções por região de interesse") +
-  guides(fill = guide_legend(nrow = 1)) +
+  guides(fill = guide_legend(nrow = 2)) +
   tema + theme(panel.grid.major.y = element_blank())
 salvar(g3, "fig_mix", h = 4.2)
 
 # 4) erro de predição de desvios (CPUs com preditor) ---------------------------
 d4 <- rois |> filter(cpu %in% c("minor", "o3"), desvios > 0) |>
   mutate(rotulo_roi = factor(rotulo_roi, levels = rev(levels(rotulo_roi))))
-g4 <- ggplot(d4, aes(erro_predicao, rotulo_roi, fill = cpu)) +
+g4 <- ggplot(d4, aes(erro_predicao, rotulo_roi, fill = cpu,
+                     group = factor(cpu, levels = rev(CPUS)))) +
   geom_col(position = position_dodge(width = 0.8), width = 0.75,
            colour = "white", linewidth = 0.4) +
   geom_text(aes(label = pct()(erro_predicao)), position = position_dodge(width = 0.8),
@@ -260,16 +273,22 @@ g4 <- ggplot(d4, aes(erro_predicao, rotulo_roi, fill = cpu)) +
   scale_fill_manual(values = CORES_CPU, name = NULL) +
   scale_x_continuous(labels = pct(1), expand = expansion(mult = c(0, 0.15))) +
   labs(x = "desvios condicionais com predição errada", y = NULL,
-       title = "Erro de predição de desvios por região de interesse") +
+       title = "Erro de predição de desvios por região de interesse",
+       caption = paste("Fibonacci iterativo tem só ~20 desvios condicionais:",
+                       "a taxa é instável (poucos erros pesam muito).")) +
   tema + theme(panel.grid.major.y = element_blank())
 salvar(g4, "fig_predicao", h = 4.6)
 
 # 5) camada densa: efeito do tamanho N (CPU o3) --------------------------------
-metricas_mem <- c(ipc = "IPC", mpki_l1d = "falhas na L1D por mil instruções")
+# IPC engana aqui: as duas ordens executam números diferentes de instruções
+# para a mesma conta. Ciclos por multiplicação-acumulação compara o custo real.
+metricas_mem <- c(ciclos_por_mac = "ciclos por multiplicação-acumulação",
+                  mpki_l1d = "falhas na L1D por mil instruções")
 linhas_mem <- function(d, x, rotulo_x, escala_x) {
   dl <- d |> pivot_longer(all_of(names(metricas_mem)), names_to = "metrica") |>
     mutate(metrica = factor(metricas_mem[metrica], levels = metricas_mem))
-  ultimo <- dl |> group_by(metrica, regiao) |> filter({{ x }} == max({{ x }}))
+  ultimo <- dl |> filter(metrica == levels(metrica)[1]) |>
+    group_by(regiao) |> filter({{ x }} == max({{ x }}))
   ggplot(dl, aes({{ x }}, value, colour = regiao)) +
     geom_line(linewidth = 0.7) +
     geom_point(size = 2.2) +
@@ -287,7 +306,9 @@ g5 <- linhas_mem(d5, n, "N (matrizes N×N de double)",
                  scale_x_continuous(trans = "log2", breaks = c(16, 32, 64, 128),
                                     expand = expansion(mult = c(0.05, 0.3)))) +
   labs(title = "Camada densa: mesma conta, duas ordens de laço (CPU o3)",
-       subtitle = "L1D = 32 KiB: com N = 32 as três matrizes ainda cabem; com N = 64 já não")
+       subtitle = paste("L1D = 32 KiB: com N = 32 as três matrizes cabem; com N = 64 já não.",
+                        "Na i-k-j, o preditor de dependência de memória do o3 retém as cargas de Y.",
+                        sep = "\n"))
 salvar(g5, "fig_camada_n", h = 3.4)
 
 # 6) camada densa N=64: varredura do tamanho da L1D (CPU o3) -------------------
@@ -325,7 +346,7 @@ if (requireNamespace("flextable", quietly = TRUE)) {
   rois |> select(Programa = rotulo, `Região` = regiao, cpu, ipc) |>
     pivot_wider(names_from = cpu, values_from = ipc) |>
     flextable() |>
-    colformat_double(j = CPUS, digits = 2, decimal.mark = ",") |>
+    colformat_double(j = CPUS, digits = 2, big.mark = ".", decimal.mark = ",") |>
     add_header_row(values = c("", "IPC por modelo de CPU"), colwidths = c(2, 4)) |>
     merge_v(j = "Programa") |> theme_booktabs() |> autofit() |>
     save_as_docx(path = file.path(DIR_OUT, "tabela_ipc_cpus.docx"))
