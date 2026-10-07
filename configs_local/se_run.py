@@ -6,6 +6,12 @@
 #
 # Os valores padrão definem a configuração-base do artigo; simular.sh grava
 # todos os parâmetros no meta.json e os inclui no hash da execução.
+#
+# Regiões de interesse (ROI): o programa marca o trecho medido com
+# m5_work_begin/m5_work_end. Nos dois eventos as estatísticas são despejadas
+# e zeradas, então o stats.txt fica dividido em segmentos consecutivos:
+#   [antes] [ROI 1] [entre] [ROI 2] ... [depois]
+# A soma dos segmentos é o programa inteiro; os segmentos pares são as ROIs.
 import argparse
 
 from gem5.components.boards.simple_board import SimpleBoard
@@ -16,6 +22,8 @@ from gem5.components.processors.simple_processor import SimpleProcessor
 from gem5.components.processors.cpu_types import CPUTypes
 from gem5.isas import ISA
 from gem5.resources.resource import BinaryResource
+from gem5.simulate.exit_event import ExitEvent
+from gem5.simulate.exit_event_generators import dump_reset_generator
 from gem5.simulate.simulator import Simulator
 
 p = argparse.ArgumentParser()
@@ -46,5 +54,8 @@ board.set_se_binary_workload(BinaryResource(args.binary))
 
 print(f">>> Rodando {args.binary} com CPU={args.cpu} "
       f"L1D={args.l1d} L1I={args.l1i} L2={args.l2} clk={args.clk}")
-Simulator(board=board).run()
+Simulator(board=board, on_exit_event={
+    ExitEvent.WORKBEGIN: dump_reset_generator(),
+    ExitEvent.WORKEND: dump_reset_generator(),
+}).run()
 print(">>> Simulação concluída.")

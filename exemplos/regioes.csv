@@ -1,0 +1,13 @@
+programa,roi,regiao
+soma_vetor,1,laço de soma
+bubble_sort,1,vetor aleatório
+bubble_sort,2,vetor já ordenado
+busca_binaria,1,busca linear
+busca_binaria,2,busca binária
+fibonacci,1,recursivo
+fibonacci,2,iterativo
+regressao_linear,1,treino
+perceptron,1,treino
+mlp_xor,1,treino
+camada_densa,1,ordem i-j-k
+camada_densa,2,ordem i-k-j
