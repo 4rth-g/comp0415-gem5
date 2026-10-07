@@ -1,14 +1,15 @@
 """preparar_modelo.py — gera artigo/referencia.docx a partir do modelo do
 professor (artigo/modelo.docx), para o Quarto/pandoc usar como reference-doc.
 
-Mantém do modelo: página, margens, fontes e os estilos do template (Title,
+Mantém do modelo: página, margens, corpo em duas colunas, fontes e os
+estilos do template (Title,
 Author, Affiliation, Abstract Title, heading 1/2/3, References...). Ajusta os
 estilos que o pandoc usa e que o modelo não tem, com a aparência do modelo:
   Body Text / First Paragraph  = corpo do modelo (justificado, recuo na 1ª linha)
   Compact                      = texto de tabela
   Image Caption / Table Caption = legendas centralizadas, em negrito
   Bibliography                 = estilo References do modelo
-  Source Code                  = código, monoespaçado
+  Source Code                  = código, monoespaçado (cabe na coluna)
 
 Uso: python3 artigo/preparar_modelo.py   (chamado por `make artigo`)
 """
@@ -46,9 +47,10 @@ NOVOS = [
            '<w:spacing w:after="60"/><w:ind w:left="284" w:hanging="284"/><w:jc w:val="both"/>'),
     estilo("SourceCode", "Source Code", "Normal",
            '<w:spacing w:before="60" w:after="60"/><w:jc w:val="left"/>',
-           '<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/><w:sz w:val="17"/>'),
+           '<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/><w:sz w:val="15"/>'),
+    # sem tamanho próprio: herda o do parágrafo (texto ou bloco de código)
     estilo("VerbatimChar", "Verbatim Char", "DefaultParagraphFont", "",
-           '<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/><w:sz w:val="20"/>',
+           '<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/>',
            tipo="character"),
 ]
 
@@ -57,9 +59,12 @@ with tempfile.TemporaryDirectory() as tmp:
         z.extractall(tmp)
     word = Path(tmp) / "word"
 
-    # corpo vazio, preservando a configuração de página (último sectPr)
+    # corpo vazio; a seção final do documento gerado é a do corpo do modelo
+    # (duas colunas). O bloco de título, em uma coluna, é encerrado por uma
+    # quebra de seção no próprio artigo.qmd.
     doc = (word / "document.xml").read_text(encoding="utf-8")
-    sect = re.findall(r"<w:sectPr\b.*?</w:sectPr>", doc, re.S)[-1]
+    sect = [s for s in re.findall(r"<w:sectPr\b.*?</w:sectPr>", doc, re.S)
+            if 'w:num="2"' in s][0]
     corpo = re.search(r"<w:body>.*</w:body>", doc, re.S)
     assert corpo, "modelo.docx sem <w:body>"
     doc = doc[:corpo.start()] + f"<w:body><w:p/>{sect}</w:body>" + doc[corpo.end():]
@@ -71,6 +76,11 @@ with tempfile.TemporaryDirectory() as tmp:
     st = re.sub(r'(<w:style [^>]*w:styleId="Corpodetexto">.*?<w:pPr>).*?(</w:pPr>)',
                 r'\1<w:spacing w:before="0" w:after="0"/><w:ind w:firstLine="245"/>'
                 r'<w:jc w:val="both"/>\2', st, count=1, flags=re.S)
+    # títulos de seção com espaço antes e depois (no modelo, linhas em branco)
+    for sid, antes, depois in (("Ttulo1", 240, 120), ("Ttulo2", 160, 60)):
+        st = re.sub(r'(<w:style [^>]*w:styleId="%s">.*?<w:pPr>)' % sid,
+                    r'\1<w:spacing w:before="%d" w:after="%d"/>' % (antes, depois),
+                    st, count=1, flags=re.S)
     existentes = set(re.findall(r'w:styleId="([^"]+)"', st))
     novos = [n for n in NOVOS
              if re.findall(r'w:styleId="([^"]+)"', n)[0] not in existentes]

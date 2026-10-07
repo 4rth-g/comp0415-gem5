@@ -48,7 +48,12 @@ analise/
   testes.R             # testes do parser com um stats.txt sintético (make testar)
   visualizar.sh        # pipeline do o3, trace RISC-V e assembly de uma ROI (make visual)
   comparar.sh          # mesmo hash => mesmas estatísticas? (make reproduzir)
-artigo/                # referencias.bib (conferido), zotero_novos.bib, ZOTERO.md
+artigo/
+  artigo.qmd           # o artigo (Quarto); números lidos de analise/saida/metricas.csv
+  modelo.docx          # modelo da disciplina (template SBC, 2 colunas)
+  preparar_modelo.py   # modelo.docx -> referencia.docx (reference-doc do Quarto)
+  referencias.bib      # referências conferidas (Crossref/DataCite); ZOTERO.md, zotero_novos.bib
+  abnt-numerico.csl    # estilo ABNT numérico, citação entre colchetes como no modelo
 renv.lock              # versões exatas dos pacotes R (snapshot Posit PM de 25/09/2026)
 bin/SHA256SUMS         # hashes dos binários RISC-V — referência para `make verificar`
 resultados/            # execuções das entradas atuais (as antigas ficam no histórico do git)
@@ -82,6 +87,7 @@ make testar                   # testes do parser de estatísticas
 make tudo                     # JOBS=n simulações em paralelo (padrão 4)
 #    -> analise/saida/: metricas.csv, mix.csv, configuracao.csv,
 #       tabela_*.docx, fig_*.pdf|png
+#    -> artigo/artigo.docx (requer Quarto)
 ```
 
 `make sim` reaproveita execuções já feitas com as mesmas entradas (mesmo
