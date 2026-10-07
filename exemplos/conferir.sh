@@ -3,20 +3,20 @@
 #  1) compila cada exemplo nativamente (x86-64, no container, -DSEM_GEM5 — as
 #     marcações de ROI viram no-ops) e mostra a saída;
 #  2) para as redes neurais, compara com a referência em Python
-#     (exemplos/referencia/), linha a linha.
+#     (exemplos/referencia/), linha a linha — também no container
+#     (Python 3.12 e numpy 1.26.4 fixados na imagem).
 # Uso (na raiz do repo): ./exemplos/conferir.sh   — ou: make conferir
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-ENGINE="$(command -v podman || command -v docker)"
-IMG="gem5-riscv:local"
+source "$REPO_DIR/ambiente.sh"
 OUT="$REPO_DIR/build/nativo"
 mkdir -p "$OUT"
 cd "$REPO_DIR"
 
 nativo() {   # nativo <programa> [flags extras]
   local p="$1"; shift
-  "$ENGINE" run --rm -v "$REPO_DIR":/w -w /w "$IMG" \
+  em_container -v "$REPO_DIR":/w -w /w "$IMG" \
     g++ -O2 -ffp-contract=off -DSEM_GEM5 "$@" "exemplos/${p%_N*}.cpp" -o "build/nativo/$p"
   "$OUT/$p"
 }
@@ -40,7 +40,7 @@ compara() {  # compara <nome> <saída C++> <saída Python>
   fi
 }
 
-ref() { (cd exemplos/referencia && python3 "$1"); }
+ref() { em_container -v "$REPO_DIR":/w -w /w/exemplos/referencia "$IMG" python3 "$1"; }
 
 filtro='^  (época|w =)'
 compara regressao_linear \

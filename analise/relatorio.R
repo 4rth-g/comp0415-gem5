@@ -4,174 +4,32 @@
 #
 # Uso (na raiz do repo):  Rscript analise/relatorio.R   (ou: make analise)
 #
-# Entrada: resultados/<execução>/{meta.json, stats.txt.gz} (gerados por simular.sh)
+# Entrada: resultados/<execução>/{meta.json, stats.txt.gz, config.ini.gz}
 #          exemplos/regioes.csv (nome de cada ROI)
-# Saída:   analise/saida/metricas.csv   1 linha por execução × segmento
-#          analise/saida/mix.csv        mix de instruções por execução × segmento
+#          analise/saida/visual/*/gem5_o3/o3pipeview.txt (opcional, make visual)
+# Saída:   analise/saida/metricas.csv, mix.csv, configuracao.csv
 #          analise/saida/tabela_*.docx  tabelas nativas do Word
 #          analise/saida/fig_*.pdf|png  gráficos
-#
-# Segmentos: o se_run.py despeja e zera as estatísticas no início e no fim de
-# cada região de interesse (ROI), então o stats.txt tem os dumps
-#   [antes] [ROI 1] [entre] [ROI 2] ... [depois]
-# Cada ROI vira uma linha; a soma de todos os dumps vira "programa inteiro".
-# As taxas (IPC, taxas de falha...) são recalculadas a partir das contagens.
-suppressPackageStartupMessages({
-  library(dplyr); library(tidyr); library(purrr); library(stringr)
-  library(readr); library(ggplot2); library(jsonlite)
-})
+#          analise/saida/sistema.dot    diagrama do sistema (o Makefile renderiza)
+suppressPackageStartupMessages(library(ggplot2))
+source("analise/funcoes.R")
 
-DIR_RES <- "resultados"
 DIR_OUT <- "analise/saida"
-CONFIG  <- "configs_local/se_run.py"
 dir.create(DIR_OUT, recursive = TRUE, showWarnings = FALSE)
 # saídas são regeneráveis: apaga as da rodada anterior (inclusive de figuras
 # que deixaram de existir)
 unlink(list.files(DIR_OUT, "^(fig|tabela)_.*\\.(pdf|png|docx)$", full.names = TRUE))
 
-CPUS <- c("atomic", "timing", "minor", "o3")
-BASE <- list(l1d = "32KiB", l1i = "32KiB", l2 = "256KiB", clk = "1GHz")
-
-# ---- leitura do stats.txt ---------------------------------------------------
-P <- "board.processor.cores.core."
-C <- "board.cache_hierarchy."
-CONTADORES <- c(
-  instrucoes      = "simInsts",
-  ticks           = "simTicks",
-  ciclos          = paste0(P, "numCycles"),
-  l1d_falhas      = paste0(C, "l1d-cache-0.overallMisses::total"),
-  l1d_acessos     = paste0(C, "l1d-cache-0.overallAccesses::total"),
-  l1i_falhas      = paste0(C, "l1i-cache-0.overallMisses::total"),
-  l1i_acessos     = paste0(C, "l1i-cache-0.overallAccesses::total"),
-  l2_falhas       = paste0(C, "l2-cache-0.overallMisses::total"),
-  l2_acessos      = paste0(C, "l2-cache-0.overallAccesses::total"),
-  desvios         = paste0(P, "branchPred.condPredicted"),   # só minor e o3
-  desvios_errados = paste0(P, "branchPred.condIncorrect"),
-  # o3: cargas que o preditor de dependência de memória (store sets) segurou
-  # até uma escrita anterior terminar
-  cargas_retidas  = paste0(P, "MemDepUnit__0.conflictingLoads")
-)
-PREFIXO_MIX <- paste0(P, "commitStats0.committedInstType::")
-
-# classes de instrução do gem5 -> grupos do artigo
-grupo_mix <- function(classe) case_when(
-  str_starts(classe, "Int")                     ~ "inteiro",
-  classe %in% c("MemRead", "FloatMemRead")      ~ "leitura de memória",
-  classe %in% c("MemWrite", "FloatMemWrite")    ~ "escrita em memória",
-  str_starts(classe, "Float")                   ~ "ponto flutuante",
-  TRUE                                          ~ "outros"
-)
-GRUPOS <- c("inteiro", "ponto flutuante", "leitura de memória",
-            "escrita em memória", "outros")
-
-# stats.txt(.gz) -> tibble (dump, nome, valor), só linhas escalares
-ler_dumps <- function(arquivo) {
-  linhas <- readLines(arquivo, warn = FALSE)        # descomprime .gz sozinho
-  dump   <- cumsum(str_detect(linhas, "Begin Simulation Statistics"))
-  ok     <- dump > 0 & nzchar(str_trim(linhas)) & !str_starts(linhas, "-")
-  partes <- str_split_fixed(str_squish(linhas[ok]), " ", 3)
-  tibble(dump = dump[ok], nome = partes[, 1],
-         valor = suppressWarnings(as.numeric(partes[, 2]))) |>
-    filter(!is.na(valor))
-}
-
-# Os dumps de uma execução -> uma linha por segmento (programa inteiro + ROIs).
-# Contador ausente num dump = 0 (o gem5 omite contagens zeradas); ausente em
-# todos = NA (o modelo de CPU não tem aquela estrutura, ex.: preditor no atomic).
-segmentar <- function(d) {
-  n <- max(d$dump)
-  cont <- map_dfc(CONTADORES, function(nome) {
-    v <- d |> filter(nome == !!nome)
-    if (!nrow(v)) return(rep(NA_real_, n))
-    x <- numeric(n); x[v$dump] <- v$valor; x
-  }) |> mutate(dump = seq_len(n))
-  mix <- d |>
-    filter(str_starts(nome, fixed(PREFIXO_MIX)), !str_ends(nome, "::total")) |>
-    mutate(grupo = grupo_mix(str_remove(nome, fixed(PREFIXO_MIX)))) |>
-    group_by(dump, grupo) |> summarise(qtd = sum(valor), .groups = "drop")
-
-  # dumps pares (2, 4, ...) são as ROIs, exceto o último (que é o "depois")
-  rois <- if (n >= 3) seq(2, n - 1, by = 2) else integer(0)
-  segmentos <- c(list(list(roi = 0L, dumps = seq_len(n))),
-                 map(rois, \(i) list(roi = as.integer(i / 2), dumps = i)))
-  linhas <- map(segmentos, function(s) {
-    soma <- cont |> filter(dump %in% s$dumps) |> select(-dump) |>
-      summarise(across(everything(), \(x) sum(x)))
-    m <- mix |> filter(dump %in% s$dumps) |> group_by(grupo) |>
-      summarise(qtd = sum(qtd), .groups = "drop")
-    list(cont = mutate(soma, roi = s$roi), mix = mutate(m, roi = s$roi))
-  })
-  list(cont = list_rbind(map(linhas, "cont")), mix = list_rbind(map(linhas, "mix")))
-}
-
-# ---- execuções válidas ------------------------------------------------------
-# Válida = gerada pelas entradas ATUAIS: binário listado no bin/SHA256SUMS e
-# se_run.py igual ao do repositório. Execuções antigas continuam em
-# resultados/ (rastreáveis pelo meta.json), mas não entram na análise.
-sha_bins <- read_table("bin/SHA256SUMS", col_names = c("sha", "arquivo"),
-                       show_col_types = FALSE)$sha
-sha_cfg  <- str_extract(system2("sha256sum", CONFIG, stdout = TRUE), "^\\S+")
-
-metas <- list.files(DIR_RES, pattern = "^meta\\.json$", recursive = TRUE,
-                    full.names = TRUE)
-valida <- map_lgl(metas, function(arq) {
-  m <- fromJSON(arq)
-  !is.null(m$parametros) && m$binario_sha256 %in% sha_bins &&
-    m$config_sha256 == sha_cfg
-})
-if (any(!valida))
-  message("ignorando ", sum(!valida), " execução(ões) de entradas antigas ",
-          "(binário ou se_run.py diferentes dos atuais)")
-dirs <- dirname(metas[valida])
-if (!length(dirs)) stop("nenhuma execução válida em ", DIR_RES, " — rode `make sim`")
-
-regioes <- read_csv("exemplos/regioes.csv", show_col_types = FALSE)
-
-ler_execucao <- function(dir) {
-  m    <- fromJSON(file.path(dir, "meta.json"))
-  nome <- str_remove(basename(m$binario), "_riscv$")
-  seg  <- segmentar(ler_dumps(file.path(dir, "stats.txt.gz")))
-  id   <- tibble(execucao = basename(dir),
-                 programa = str_remove(nome, "_N\\d+$"),
-                 n = as.integer(str_match(nome, "_N(\\d+)$")[, 2]),
-                 cpu = m$cpu, l1d = m$parametros$l1d, l1i = m$parametros$l1i,
-                 l2 = m$parametros$l2, clk = m$parametros$clk,
-                 hash = m$hash, timestamp = m$timestamp)
-  list(cont = cross_join(id, seg$cont), mix = cross_join(id, seg$mix))
-}
-
-execucoes <- map(dirs, ler_execucao)
-nomear <- function(df) df |>
-  left_join(regioes, by = c("programa", "roi")) |>
-  mutate(regiao = if_else(roi == 0, "programa inteiro",
-                          coalesce(regiao, paste("ROI", roi))))
-
-# gem5 é determinístico: execuções com o mesmo hash são idênticas -> fica a
-# mais recente de cada
-dados <- list_rbind(map(execucoes, "cont")) |>
-  group_by(hash) |> filter(timestamp == max(timestamp)) |> ungroup() |>
-  nomear() |>
-  mutate(cpu = factor(cpu, levels = CPUS),
-         ipc            = instrucoes / ciclos,
-         cpi            = ciclos / instrucoes,
-         mpki_l1d       = 1000 * l1d_falhas / instrucoes,
-         taxa_falha_l1d = l1d_falhas / l1d_acessos,
-         taxa_falha_l2  = l2_falhas / l2_acessos,
-         erro_predicao  = desvios_errados / desvios,
-         # camada densa: N³ multiplicações-acumulações por ROI
-         ciclos_por_mac = if_else(programa == "camada_densa" & roi > 0,
-                                  ciclos / n^3, NA_real_)) |>
-  arrange(programa, n, roi, cpu)
-mix <- list_rbind(map(execucoes, "mix")) |>
-  semi_join(dados, by = c("execucao", "roi")) |>
-  nomear() |>
-  mutate(cpu = factor(cpu, levels = CPUS), grupo = factor(grupo, levels = GRUPOS))
-
+dirs <- execucoes_validas()
+if (!length(dirs)) stop("nenhuma execução válida em resultados/ — rode `make sim`")
+lido  <- ler_tudo(dirs, read_csv("exemplos/regioes.csv", show_col_types = FALSE))
+dados <- lido$dados
+mix   <- lido$mix
 write_csv(dados, file.path(DIR_OUT, "metricas.csv"))
 write_csv(mix, file.path(DIR_OUT, "mix.csv"))
 
-# configuração-base (sem as variações de cache/clock)
-base <- dados |> filter(l1d == BASE$l1d, l1i == BASE$l1i, l2 == BASE$l2, clk == BASE$clk)
+CLASSICOS <- c("soma_vetor", "bubble_sort", "busca_binaria", "fibonacci")
+base  <- na_base(dados)
 # visão geral: da camada densa, só o tamanho N = 64
 geral <- base |> filter(is.na(n) | n == 64) |>
   mutate(rotulo = if_else(is.na(n), programa, paste0(programa, " (N=", n, ")")))
@@ -228,22 +86,29 @@ g1 <- ggplot(d1, aes(instrucoes, rotulo)) +
 salvar(g1, "fig_instrucoes", h = 3.2)
 
 # 2) IPC por modelo de CPU, em cada ROI ----------------------------------------
-g2 <- ggplot(rois, aes(cpu, ipc, fill = cpu)) +
-  geom_col(width = 0.75, colour = "white", linewidth = 0.4) +
-  geom_text(aes(label = num(0.01)(ipc)), vjust = -0.4, size = 2.3, colour = TINTA2) +
-  facet_wrap(~rotulo_roi, ncol = 4, labeller = label_wrap_gen(24)) +
-  scale_fill_manual(values = CORES_CPU, guide = "none") +
-  scale_y_continuous(labels = num(0.1), expand = expansion(mult = c(0, 0.18))) +
-  labs(x = "modelo de CPU", y = "IPC (instruções por ciclo)",
-       title = "IPC por modelo de CPU em cada região de interesse",
-       caption = "atomic: modelo funcional; seus ciclos são aproximados, não cycle-accurate.") +
-  tema + theme(panel.grid.major.x = element_blank(),
-               axis.text.x = element_text(size = 6.5),
-               strip.text = element_text(size = 7, lineheight = 0.9))
-salvar(g2, "fig_ipc", h = 6.5)
+#    sem o atomic: é um modelo funcional, seus "ciclos" não medem tempo
+g_ipc <- function(d, titulo) {
+  ggplot(d, aes(cpu, ipc, fill = cpu)) +
+    geom_col(width = 0.75, colour = "white", linewidth = 0.4) +
+    geom_text(aes(label = num(0.01)(ipc)), vjust = -0.4, size = 2.3, colour = TINTA2) +
+    facet_wrap(~rotulo_roi, ncol = 4, labeller = label_wrap_gen(24)) +
+    scale_fill_manual(values = CORES_CPU, guide = "none") +
+    scale_y_continuous(labels = num(0.1), expand = expansion(mult = c(0, 0.18))) +
+    labs(x = "modelo de CPU", y = "IPC (instruções por ciclo)", title = titulo) +
+    tema + theme(panel.grid.major.x = element_blank(),
+                 strip.text = element_text(size = 7, lineheight = 0.9))
+}
+sem_atomic <- rois |> filter(cpu != "atomic", regiao != "ROI vazia") |> droplevels()
+salvar(g_ipc(filter(sem_atomic, programa %in% CLASSICOS),
+             "IPC por modelo de CPU: algoritmos clássicos"),
+       "fig_ipc_classicos", h = 4.6)
+salvar(g_ipc(filter(sem_atomic, !programa %in% CLASSICOS),
+             "IPC por modelo de CPU: redes neurais e camada densa"),
+       "fig_ipc_redes", h = 2.6)
 
 # 3) mix de instruções por ROI (não depende da CPU; usa o atomic) --------------
-d3 <- mix |> semi_join(rois |> filter(cpu == "atomic"), by = c("execucao", "roi")) |>
+d3 <- mix |> semi_join(rois |> filter(cpu == "atomic", regiao != "ROI vazia"),
+                       by = c("execucao", "roi")) |>
   left_join(rois |> distinct(execucao, roi, rotulo_roi), by = c("execucao", "roi")) |>
   group_by(rotulo_roi) |> mutate(frac = qtd / sum(qtd)) |> ungroup() |>
   mutate(rotulo_roi = factor(rotulo_roi, levels = rev(levels(rois$rotulo_roi))))
@@ -259,10 +124,10 @@ g3 <- ggplot(d3, aes(frac, rotulo_roi, fill = grupo)) +
        title = "Mix de instruções por região de interesse") +
   guides(fill = guide_legend(nrow = 2)) +
   tema + theme(panel.grid.major.y = element_blank())
-salvar(g3, "fig_mix", h = 4.2)
+salvar(g3, "fig_mix", h = 4.4)
 
 # 4) erro de predição de desvios (CPUs com preditor) ---------------------------
-d4 <- rois |> filter(cpu %in% c("minor", "o3"), desvios > 0) |>
+d4 <- rois |> filter(cpu %in% c("minor", "o3"), desvios > 0, regiao != "ROI vazia") |>
   mutate(rotulo_roi = factor(rotulo_roi, levels = rev(levels(rotulo_roi))))
 g4 <- ggplot(d4, aes(erro_predicao, rotulo_roi, fill = cpu,
                      group = factor(cpu, levels = rev(CPUS)))) +
@@ -273,59 +138,162 @@ g4 <- ggplot(d4, aes(erro_predicao, rotulo_roi, fill = cpu,
   scale_fill_manual(values = CORES_CPU, name = NULL) +
   scale_x_continuous(labels = pct(1), expand = expansion(mult = c(0, 0.15))) +
   labs(x = "desvios condicionais com predição errada", y = NULL,
-       title = "Erro de predição de desvios por região de interesse",
-       caption = paste("Fibonacci iterativo tem só ~20 desvios condicionais:",
-                       "a taxa é instável (poucos erros pesam muito).")) +
+       title = "Erro de predição de desvios por região de interesse") +
   tema + theme(panel.grid.major.y = element_blank())
 salvar(g4, "fig_predicao", h = 4.6)
 
-# 5) camada densa: efeito do tamanho N (CPU o3) --------------------------------
+# 5–6) camada densa: tamanho N e tamanho da L1D (CPU o3) ----------------------
 # IPC engana aqui: as duas ordens executam números diferentes de instruções
 # para a mesma conta. Ciclos por multiplicação-acumulação compara o custo real.
-metricas_mem <- c(ciclos_por_mac = "ciclos por multiplicação-acumulação",
-                  mpki_l1d = "falhas na L1D por mil instruções")
-linhas_mem <- function(d, x, rotulo_x, escala_x) {
-  dl <- d |> pivot_longer(all_of(names(metricas_mem)), names_to = "metrica") |>
-    mutate(metrica = factor(metricas_mem[metrica], levels = metricas_mem))
-  ultimo <- dl |> filter(metrica == levels(metrica)[1]) |>
-    group_by(regiao) |> filter({{ x }} == max({{ x }}))
+linhas <- function(d, x, metricas, rotulo_x, escala_x) {
+  dl <- d |> pivot_longer(all_of(names(metricas)), names_to = "metrica") |>
+    mutate(metrica = factor(metricas[metrica], levels = metricas))
   ggplot(dl, aes({{ x }}, value, colour = regiao)) +
     geom_line(linewidth = 0.7) +
     geom_point(size = 2.2) +
-    geom_text(data = ultimo, aes(label = regiao), hjust = -0.15, size = 2.6,
-              show.legend = FALSE) +
-    facet_wrap(~metrica, scales = "free_y") +
+    facet_wrap(~metrica, scales = "free_y", nrow = 1) +
     escala_x +
-    scale_y_continuous(labels = num(0.1), limits = c(0, NA)) +
-    scale_colour_manual(values = c(`ordem i-j-k` = PALETA[2],
-                                   `ordem i-k-j` = PALETA[1]), name = NULL) +
+    scale_y_continuous(labels = scales::label_number(big.mark = ".", decimal.mark = ","),
+                       limits = c(0, NA)) +
+    scale_colour_manual(values = c(`ordem i-j-k` = PALETA[2], `ordem i-k-j` = PALETA[1],
+                                   `ordem i-k-j (4 k por vez)` = PALETA[3]), name = NULL) +
     labs(x = rotulo_x, y = NULL) + tema
 }
-d5 <- base |> filter(programa == "camada_densa", cpu == "o3", roi > 0)
-g5 <- linhas_mem(d5, n, "N (matrizes N×N de double)",
-                 scale_x_continuous(trans = "log2", breaks = c(16, 32, 64, 128),
-                                    expand = expansion(mult = c(0.05, 0.3)))) +
-  labs(title = "Camada densa: mesma conta, duas ordens de laço (CPU o3)",
-       subtitle = paste("L1D = 32 KiB: com N = 32 as três matrizes cabem; com N = 64 já não.",
-                        "Na i-k-j, o preditor de dependência de memória do o3 retém as cargas de Y.",
-                        sep = "\n"))
-salvar(g5, "fig_camada_n", h = 3.4)
+log2_x <- function(br) scale_x_continuous(trans = "log2", breaks = br,
+                                          expand = expansion(mult = 0.06))
+MEM <- c(ciclos_por_mac = "ciclos por multiplicação-acumulação",
+         mpki_l1d = "falhas na L1D por mil instruções",
+         retidas_por_mac = "cargas retidas por mult.-acumulação")
 
-# 6) camada densa N=64: varredura do tamanho da L1D (CPU o3) -------------------
+por_mac <- function(d) mutate(d, retidas_por_mac = cargas_retidas / n^3)
+d5 <- base |> filter(programa == "camada_densa", cpu == "o3", roi > 0) |> por_mac()
+salvar(linhas(d5, n, MEM, "N (matrizes N×N de double)", log2_x(c(16, 32, 64, 128))) +
+         labs(title = "Camada densa: mesma conta, três ordens de laço (CPU o3)",
+              subtitle = paste("L1D = 32 KiB: com N = 32 as três matrizes cabem; com N = 64 já não.",
+                               "Na i-k-j, o o3 retém cada leitura de Y até a escrita anterior terminar.",
+                               sep = "\n")),
+       "fig_camada_n", w = 7.5, h = 3.5)
+
 d6 <- dados |> filter(programa == "camada_densa", n == 64, cpu == "o3", roi > 0,
-                      l1i == BASE$l1i, l2 == BASE$l2, clk == BASE$clk) |>
-  mutate(l1d_kib = as.numeric(str_remove(l1d, "KiB")))
+                      l1i == BASE$l1i, l2 == BASE$l2, clk == BASE$clk,
+                      ssclear == BASE$ssclear) |>
+  mutate(l1d_kib = as.numeric(str_remove(l1d, "KiB"))) |> por_mac()
 if (n_distinct(d6$l1d_kib) > 1) {
-  g6 <- linhas_mem(d6, l1d_kib, "tamanho da L1D (KiB)",
-                   scale_x_continuous(trans = "log2", breaks = unique(d6$l1d_kib),
-                                      expand = expansion(mult = c(0.05, 0.3)))) +
-    labs(title = "Camada densa (N = 64): variando o tamanho da L1D (CPU o3)")
-  salvar(g6, "fig_varredura_l1d", h = 3.4)
-} else message("sem varredura de L1D em resultados/ (rode `make varredura`)")
+  salvar(linhas(d6, l1d_kib, MEM, "tamanho da L1D (KiB)", log2_x(unique(d6$l1d_kib))) +
+           labs(title = "Camada densa (N = 64): variando o tamanho da L1D (CPU o3)"),
+         "fig_varredura_l1d", w = 7.5, h = 3.3)
+} else message("sem varredura de L1D (rode `make varredura`)")
+
+# 8) pipeline do o3, instrução por instrução (make visual) ----------------------
+FASES <- c("busca", "decodificação e renomeação", "fila de emissão",
+           "execução", "espera p/ confirmar")
+for (trace in Sys.glob("analise/saida/visual/*/gem5_o3/o3pipeview.txt")) {
+  caso <- basename(dirname(dirname(trace)))           # ex.: soma_vetor_roi2
+  pv <- ler_pipeview(trace)
+  if (!nrow(pv)) next
+  t <- pv |> pivot_wider(names_from = estagio, values_from = tick) |> arrange(seq)
+  # regime permanente: pula o marcador de ROI e a 1ª volta do laço
+  t <- t |> filter(!str_detect(disasm, "M5Op")) |> slice(9:24)
+  ciclo0 <- min(t$fetch)
+  fase <- function(de, ate, nome) t |>
+    transmute(seq, disasm, inicio = ({{ de }} - ciclo0) / 1000,
+              fim = ({{ ate }} - ciclo0) / 1000, fase = nome)
+  seg <- bind_rows(fase(fetch, decode, FASES[1]), fase(decode, dispatch, FASES[2]),
+                   fase(dispatch, issue, FASES[3]), fase(issue, complete, FASES[4]),
+                   fase(complete, retire, FASES[5])) |>
+    mutate(fase = factor(fase, levels = FASES),
+           instr = factor(paste0(seq, "  ", disasm), levels = rev(paste0(t$seq, "  ", t$disasm))))
+  g8 <- ggplot(seg, aes(y = instr)) +
+    geom_linerange(aes(xmin = inicio, xmax = fim, colour = fase), linewidth = 3.2) +
+    geom_point(data = t |> mutate(instr = factor(paste0(seq, "  ", disasm), levels = levels(seg$instr))),
+               aes(x = (retire - ciclo0) / 1000), shape = 21, fill = "white",
+               colour = TINTA, size = 1.6) +
+    scale_colour_manual(values = setNames(PALETA, FASES), name = NULL) +
+    scale_x_continuous(breaks = scales::breaks_width(2), expand = expansion(mult = 0.02)) +
+    labs(x = "ciclo", y = NULL,
+         title = paste0("Pipeline do o3, instrução por instrução (", str_replace(caso, "_roi", ", ROI "), ")"),
+         caption = "Cada linha é uma instrução confirmada, na ordem de busca; o círculo marca a confirmação (commit).") +
+    guides(colour = guide_legend(nrow = 2)) +
+    tema + theme(axis.text.y = element_text(family = "mono", size = 7),
+                 legend.text = element_text(size = 8),
+                 panel.grid.major.y = element_blank())
+  salvar(g8, paste0("fig_pipeline_", caso), h = 4.2)
+}
+
+# ---- configuração do sistema simulado -----------------------------------------
+# lida do config.ini de uma execução de cada CPU (configuração-base)
+ini_de <- function(c) {
+  d <- base |> filter(cpu == c, roi == 0) |> slice(1)
+  ler_config(file.path("resultados", d$execucao, "config.ini.gz"))
+}
+ini <- setNames(map(CPUS, ini_de), CPUS)
+o3 <- ini$o3; mn <- ini$minor
+k <- function(ini, s, c) cfg(ini, s, c)
+kib <- function(b) paste0(as.numeric(b) / 1024, " KiB")
+CORE <- "board.processor.cores.core"
+cache_txt <- function(nome) {
+  s <- paste0("board.cache_hierarchy.", nome, "-cache-0")
+  sprintf("%s, %s vias, linha de 64 B; latência: tag %s + dados %s ciclo(s); %s MSHRs; prefetcher %s",
+          kib(k(o3, s, "size")), k(o3, s, "assoc"), k(o3, s, "tag_latency"),
+          k(o3, s, "data_latency"), k(o3, s, "mshrs"), k(o3, paste0(s, ".prefetcher"), "type"))
+}
+bp_txt <- function(ini) {
+  s <- paste0(CORE, ".branchPred.conditionalBranchPred")
+  sprintf("%s (local %s, global %s, escolha %s entradas)", k(ini, s, "type"),
+          k(ini, s, "localPredictorSize"), k(ini, s, "globalPredictorSize"),
+          k(ini, s, "choicePredictorSize"))
+}
+dram <- "board.memory.mem_ctrl.dram"
+config <- tribble(
+  ~Componente, ~`Parâmetro`, ~Valor,
+  "Sistema", "ISA e modo", "RISC-V RV64GC, modo SE (syscall emulation), 1 núcleo",
+  "Sistema", "Clock", paste0(1e6 / as.numeric(k(o3, "board.clk_domain", "clock")) / 1000, " GHz"),
+  "Cache L1I", "Organização", cache_txt("l1i"),
+  "Cache L1D", "Organização", cache_txt("l1d"),
+  "Cache L2", "Organização", cache_txt("l2"),
+  "Memória", "DRAM", sprintf("DDR3-1600, 1 canal, 1 GiB; tCK %s ns, tCL %s ns",
+                             num(0.01)(as.numeric(k(o3, dram, "tCK")) / 1000),
+                             num(0.01)(as.numeric(k(o3, dram, "tCL")) / 1000)),
+  "atomic", "Execução", "1 instrução por vez; acesso à memória instantâneo (latência só estimada)",
+  "timing", "Execução", "1 instrução por vez; espera cada acesso à memória terminar",
+  "minor", "Pipeline", sprintf("em ordem; decodifica %s, emite %s, confirma %s instruções/ciclo; %s acesso(s) à memória/ciclo",
+                               k(mn, CORE, "decodeInputWidth"), k(mn, CORE, "executeIssueLimit"),
+                               k(mn, CORE, "executeCommitLimit"), k(mn, CORE, "executeMemoryIssueLimit")),
+  "minor", "Preditor de desvios", bp_txt(mn),
+  "o3", "Pipeline", sprintf("fora de ordem; largura %s (busca, decodificação, renomeação, emissão, confirmação)",
+                            k(o3, CORE, "fetchWidth")),
+  "o3", "Janela", sprintf("ROB %s; fila de cargas %s, de escritas %s; %s registradores físicos inteiros e %s de ponto flutuante",
+                          k(o3, CORE, "numROBEntries"), k(o3, CORE, "LQEntries"), k(o3, CORE, "SQEntries"),
+                          k(o3, CORE, "numPhysIntRegs"), k(o3, CORE, "numPhysFloatRegs")),
+  "o3", "Preditor de desvios", bp_txt(o3),
+  "o3", "Dependência de memória", sprintf("store sets (SSIT %s, LFST %s), zerado a cada %s acessos à memória",
+                                          k(o3, CORE, "SSITSize"), k(o3, CORE, "LFSTSize"),
+                                          num()(as.numeric(k(o3, CORE, "store_set_clear_period"))))
+)
+write_csv(config, file.path(DIR_OUT, "configuracao.csv"))
+
+# diagrama do sistema (Graphviz), com os mesmos valores da tabela
+c_lbl <- function(nome, s) sprintf("%s\\n%s · %s vias", nome, kib(k(o3, s, "size")), k(o3, s, "assoc"))
+writeLines(c(
+  "digraph sistema {",
+  "  graph [rankdir=TB, fontname=\"Helvetica\", nodesep=0.5, ranksep=0.45];",
+  "  node  [shape=box, style=\"rounded,filled\", fontname=\"Helvetica\", fontsize=11, color=\"#52514e\", fillcolor=\"#f4f3ef\"];",
+  "  edge  [color=\"#52514e\", arrowsize=0.7, dir=both];",
+  sprintf("  cpu [label=\"CPU RISC-V (RV64GC), %s GHz\\natomic · timing · minor · o3\", fillcolor=\"#dbe8f8\"];",
+          1e6 / as.numeric(k(o3, "board.clk_domain", "clock")) / 1000),
+  sprintf("  l1i [label=\"%s\"];", c_lbl("L1 de instruções", "board.cache_hierarchy.l1i-cache-0")),
+  sprintf("  l1d [label=\"%s\"];", c_lbl("L1 de dados", "board.cache_hierarchy.l1d-cache-0")),
+  "  l2bus [label=\"barramento L2\", shape=box, style=filled, fillcolor=\"#e4e3df\", height=0.25, fontsize=9];",
+  sprintf("  l2 [label=\"%s\"];", c_lbl("L2 (privada)", "board.cache_hierarchy.l2-cache-0")),
+  "  membus [label=\"barramento de memória\", shape=box, style=filled, fillcolor=\"#e4e3df\", height=0.25, fontsize=9];",
+  "  dram [label=\"DRAM DDR3-1600\\n1 canal · 1 GiB\", fillcolor=\"#fbe3d6\"];",
+  "  { rank=same; l1i; l1d; }",
+  "  cpu -> l1i; cpu -> l1d; l1i -> l2bus; l1d -> l2bus; l2bus -> l2; l2 -> membus; membus -> dram;",
+  "}"), file.path(DIR_OUT, "sistema.dot"))
 
 # ---- tabelas para o Word ----------------------------------------------------
 if (requireNamespace("flextable", quietly = TRUE)) {
-  library(flextable)
+  suppressPackageStartupMessages(library(flextable))
   fmt_pct <- function(x) ifelse(is.na(x), "—", pct()(x))
 
   # ROIs na CPU o3
@@ -342,14 +310,30 @@ if (requireNamespace("flextable", quietly = TRUE)) {
     merge_v(j = "Programa") |> theme_booktabs() |> autofit() |>
     save_as_docx(path = file.path(DIR_OUT, "tabela_rois_o3.docx"))
 
-  # IPC de cada ROI nos quatro modelos de CPU
-  rois |> select(Programa = rotulo, `Região` = regiao, cpu, ipc) |>
+  # IPC de cada ROI nos modelos de CPU com temporização
+  rois |> filter(cpu != "atomic", regiao != "ROI vazia") |>
+    select(Programa = rotulo, `Região` = regiao, cpu, ipc) |>
     pivot_wider(names_from = cpu, values_from = ipc) |>
     flextable() |>
-    colformat_double(j = CPUS, digits = 2, big.mark = ".", decimal.mark = ",") |>
-    add_header_row(values = c("", "IPC por modelo de CPU"), colwidths = c(2, 4)) |>
+    colformat_double(j = c("timing", "minor", "o3"), digits = 2, big.mark = ".",
+                     decimal.mark = ",") |>
+    add_header_row(values = c("", "IPC por modelo de CPU"), colwidths = c(2, 3)) |>
     merge_v(j = "Programa") |> theme_booktabs() |> autofit() |>
     save_as_docx(path = file.path(DIR_OUT, "tabela_ipc_cpus.docx"))
+
+  # custo da marcação de ROI (ROI vazia) por modelo de CPU
+  rois |> filter(regiao == "ROI vazia") |>
+    transmute(CPU = as.character(cpu), `Instruções` = instrucoes, Ciclos = ciclos) |>
+    flextable() |>
+    colformat_double(j = c("Instruções", "Ciclos"), digits = 0, big.mark = ".",
+                     decimal.mark = ",") |>
+    theme_booktabs() |> autofit() |>
+    save_as_docx(path = file.path(DIR_OUT, "tabela_custo_roi.docx"))
+
+  # configuração do sistema simulado
+  config |> flextable() |> merge_v(j = "Componente") |> theme_booktabs() |>
+    width(j = 3, width = 4.2) |>
+    save_as_docx(path = file.path(DIR_OUT, "tabela_configuracao.docx"))
 } else {
   message("flextable não instalado: pulando tabelas .docx")
 }

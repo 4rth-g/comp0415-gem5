@@ -22,17 +22,18 @@ o `simular.sh` procura o gem5 em `../gem5-build/gem5`. Outro local:
 ## Estrutura
 
 ```
-Makefile               # pipeline: make bin | conferir | sim | varredura | analise | tudo | verificar
+Makefile               # pipeline (ver `make` alvos abaixo)
 simular.sh             # roda 1 simulação -> resultados/<nome>_<cpu>[_variante]_<timestamp>_<hash>/
+ambiente.sh            # Podman ou Docker + imagem, comum a todos os scripts
 configs_local/
-  se_run.py            # config gem5 (Standard Library), modo SE; CPU, caches e clock por argumento;
-                       # despeja e zera as estatísticas no início e no fim de cada ROI
+  se_run.py            # config gem5 (Standard Library), modo SE; CPU, caches, clock e
+                       # preditor de dependência por argumento; dump+reset em cada ROI
 exemplos/
   comum.h              # marcação de ROI (m5_work_begin/end) + gerador LCG compartilhado
-  soma_vetor.cpp       # soma de vetor                     (acesso sequencial à memória)
+  soma_vetor.cpp       # cache fria × quente + ROI vazia    (acesso sequencial; custo da marcação)
   bubble_sort.cpp      # vetor aleatório × já ordenado     (preditor de desvios)
   busca_binaria.cpp    # busca linear × binária            (O(N) × O(log N))
-  fibonacci.cpp        # recursivo × iterativo             (chamadas de função, pilha)
+  fibonacci.cpp        # recursivo × iterativo (2000×)     (chamadas de função, pilha)
   regressao_linear.cpp # gradiente descendente             (ponto flutuante)
   perceptron.cpp       # regra de Rosenblatt               (desvio que depende do aprendizado)
   mlp_xor.cpp          # rede 2-4-1 aprendendo XOR         (FP + libm + retropropagação)
@@ -41,10 +42,16 @@ exemplos/
   referencia/*.py      # referências em Python das redes neurais
   conferir.sh          # compila nativo e compara com as referências (make conferir)
 analise/
-  relatorio.R          # resultados/ -> metricas.csv, mix.csv, tabelas .docx, fig_*.pdf|png
-  visualizar.sh        # pipeline do o3, trace RISC-V, assembly e diagrama do sistema de uma ROI
+  funcoes.R            # parser do stats.txt (segmentos/ROIs), config.ini e O3PipeView
+  relatorio.R          # resultados/ -> metricas.csv, tabelas .docx, fig_*.pdf|png, sistema.dot
+  testes.R             # testes do parser com um stats.txt sintético (make testar)
+  visualizar.sh        # pipeline do o3, trace RISC-V e assembly de uma ROI (make visual)
+  comparar.sh          # mesmo hash => mesmas estatísticas? (make reproduzir)
+  arquivar.sh          # execuções de entradas antigas -> resultados/legado/ (make arquivar)
+artigo/                # referencias.bib (conferido), zotero_novos.bib, ZOTERO.md
 renv.lock              # versões exatas dos pacotes R (snapshot Posit PM de 25/09/2026)
 bin/SHA256SUMS         # hashes dos binários RISC-V — referência para `make verificar`
+resultados/            # execuções atuais; resultados/legado/ guarda as de entradas antigas
 ```
 
 ### Regiões de interesse (ROI)
@@ -67,19 +74,34 @@ Versionado de cada simulação: `meta.json`, `stats.txt.gz`, `config.ini.gz` e
 # 1) pacotes R nas versões do renv.lock (uma vez)
 Rscript -e 'renv::restore()'
 
-# 2) os exemplos estão certos? (saída nativa = referência em Python)
+# 2) os exemplos estão certos? (saída nativa = referência em Python, no container)
 make conferir
+make testar                   # testes do parser de estatísticas
 
-# 3) tudo: compila, simula programa × CPU (+ varredura da L1D), tabelas e gráficos
+# 3) tudo: compila, simula, varreduras, pipeline do o3, tabelas e gráficos
 make tudo                     # JOBS=n simulações em paralelo (padrão 4)
-#    -> analise/saida/: metricas.csv, mix.csv, tabela_*.docx, fig_*.pdf|png
-
-# 4) visualizações de uma ROI (pipeline do o3, trace, assembly, diagrama)
-analise/visualizar.sh soma_vetor 1
-
-# Validação cruzada (máquina da dupla): os binários devem bater bit a bit
-make verificar
+#    -> analise/saida/: metricas.csv, mix.csv, configuracao.csv,
+#       tabela_*.docx, fig_*.pdf|png
 ```
+
+`make sim` reaproveita execuções já feitas com as mesmas entradas (mesmo
+hash): com os resultados versionados, ele não simula nada de novo.
+
+### Validação cruzada (máquina da dupla)
+
+```bash
+cd ~/src/gem5-build && ./build-gem5.sh       # Docker: ENGINE=docker ./build-gem5.sh
+cd ~/src/comp0415-gem5
+Rscript -e 'renv::restore()'
+make reproduzir     # 1) recompila e confere os binários com bin/SHA256SUMS
+                    # 2) simula tudo de novo (FORCAR=1)
+                    # 3) compara cada stats.txt novo com o versionado de mesmo
+                    #    hash, ignorando só as linhas host* -> "pares idênticos: N"
+git add resultados && git commit -m "Reprodução em <máquina>"
+```
+
+Com Docker, os scripts rodam o container com o usuário do host (`--user`),
+para que `bin/` e `resultados/` não fiquem com dono root.
 
 Uma simulação avulsa, com parâmetros fora do padrão (entram no hash e no nome):
 
@@ -90,8 +112,8 @@ Uma simulação avulsa, com parâmetros fora do padrão (entram no hash e no nom
 **Garantias de reprodutibilidade.** O hash de cada execução é
 sha256(binário + `se_run.py` + commit do gem5 + CPU + parâmetros). A análise
 só usa execuções das entradas atuais (binário em `bin/SHA256SUMS` e
-`se_run.py` do repositório); execuções antigas ficam em `resultados/`,
-rastreáveis, mas fora das tabelas. O gem5 é
+`se_run.py` do repositório); as de entradas antigas vão para
+`resultados/legado/` (`make arquivar`), rastreáveis pelo `meta.json`. O gem5 é
 determinístico, então mesmas entradas dão o mesmo `stats.txt` em qualquer
 máquina (exceto as linhas `host*`, que medem o computador hospedeiro). O
 `meta.json` registra também o commit deste repositório e do `gem5-build`, o
@@ -101,25 +123,52 @@ simulação termina com sucesso. Execuções com o repositório sujo aparecem co
 
 ## Principais resultados (ROIs, configuração-base)
 
-Figuras e tabelas completas em `analise/saida/` (`make analise`).
+Figuras e tabelas completas em `analise/saida/` (`make analise`). A
+configuração simulada está em `tabela_configuracao.docx` e `fig_sistema`.
 
-- **Inicialização domina programas pequenos**: a soma de 4096 elementos executa
-  16 mil instruções no laço e 169 mil no programa inteiro (`fig_instrucoes`).
-- **Mesmas instruções, ciclos muito diferentes**: o Fibonacci recursivo roda
-  com IPC 0,67 no `timing` e 5,19 no `o3` (`fig_ipc`).
-- **Preditor de desvios**: o bubble sort sobre vetor aleatório erra 3,4% dos
-  desvios no `o3` (IPC 1,55); o mesmo código sobre o vetor já ordenado erra
-  0,4% (IPC 2,43). A busca binária, com desvios imprevisíveis, fica com IPC
-  0,91 contra 3,50 da linear (`fig_predicao`).
-- **Redes neurais trazem ponto flutuante**: 24–51% das instruções no treino,
-  contra 0% nos exemplos clássicos (`fig_mix`).
-- **Hierarquia de memória × especulação** (camada densa, `fig_camada_n` e
-  `fig_varredura_l1d`): a ordem i-j-k falha muito mais na L1D quando as
-  matrizes não cabem nela (49,5 contra 3,0 falhas por mil instruções com
-  N = 64), e fica mais barata quando a L1D cresce para 32 KiB. Ainda assim,
-  no `o3` ela é **mais rápida** que a i-k-j (2,5 contra 5,1 ciclos por
-  multiplicação-acumulação): na i-k-j, o preditor de dependência de memória
-  (*store sets*) retém as cargas de `Y` atrás das escritas anteriores
-  (274 mil cargas retidas), e o custo não muda com o tamanho da cache. Nos
-  modelos sem especulação (`timing`), a i-k-j ganha, como a análise só de
-  cache prevê.
+- **Inicialização domina programas pequenos**: a soma de 4096 elementos tem
+  16 mil instruções no laço, de quase 170 mil no programa inteiro
+  (`fig_instrucoes`).
+- **Custo da marcação de ROI** (ROI vazia, `tabela_custo_roi`): 5 instruções,
+  de 6 ciclos (atomic, timing) a 25 ciclos (minor). No o3, o marcador esvazia
+  o pipeline (`fig_pipeline_*`), o que pesa em ROIs pequenas.
+- **Mesmas instruções, ciclos muito diferentes** (`fig_ipc_classicos`): o
+  Fibonacci recursivo roda com IPC 0,67 no timing e 4,95 no o3. O atomic fica
+  fora dos gráficos de IPC: é funcional, seus "ciclos" não medem tempo.
+- **Cache fria × quente** (soma, o3): a mesma soma leva 5.752 ciclos com o
+  vetor fora das caches e 4.124 com ele na L1D (IPC 2,85 contra 3,97).
+- **Pipeline do o3** (`fig_pipeline_soma_vetor_roi2`): em regime permanente,
+  o laço da soma (4 instruções) completa uma volta por ciclo.
+- **Preditor de desvios** (`fig_predicao`): o bubble sort sobre vetor aleatório
+  erra 3,4% dos desvios no o3 (IPC 1,55); sobre o vetor já ordenado, 0,4%
+  (IPC 2,43). A busca binária, com desvios imprevisíveis, fica com IPC 0,91,
+  contra 3,50 da linear.
+- **Redes neurais trazem ponto flutuante**: de 24% a 51% das instruções do
+  treino, contra 0% nos exemplos clássicos (`fig_mix`).
+- **Hierarquia de memória × dependência de memória** (camada densa N = 64, o3,
+  `fig_camada_n`, `fig_varredura_l1d`):
+
+  | Ordem | Falhas L1D / mil instr. | Cargas retidas | Ciclos por mult.-acum. (o3) | (timing) |
+  |---|---|---|---|---|
+  | i-j-k (W por coluna) | 49,5 | 0 | 2,50 | 16,1 |
+  | i-k-j (W por linha) | 3,0 | 274 mil | 5,12 | 14,4 |
+  | i-k-j, 4 `k` por vez | 3,9 | 77 mil | 2,85 | 8,7 |
+
+  A i-k-j quase não falha na cache e é a mais rápida no timing, como a
+  análise só de cache prevê. No o3, porém, ela é duas vezes mais lenta: cada
+  leitura de `Y[i][j]` vem logo depois da escrita do mesmo endereço, e o
+  preditor de dependência de memória (*store sets*) retém a leitura até a
+  escrita terminar. **Controle**: a variante com 4 valores de `k` por vez
+  mantém o acesso por linha, mas grava `Y` 4× menos. As cargas retidas caem
+  3,6× e o custo cai 44%, sem mudar as falhas de cache. Na varredura da L1D,
+  o custo da i-k-j não muda com o tamanho da cache; o da i-j-k cai a partir de
+  32 KiB.
+- **Resultado negativo** (`make storesets`, execuções em `resultados/legado/`):
+  zerar o preditor de dependência com mais frequência
+  (`store_set_clear_period` de 250.000 até 100) não mudou nenhuma
+  estatística. Pelo rastreamento (`--debug-flags=StoreSet`), a mesma
+  dependência volta a ser prevista logo depois de cada limpeza. Por isso essa
+  variação não serve de controle neste gem5; o controle usado é o do código.
+- **Reprodução entre motores de container**: binários compilados e simulações
+  refeitas com Docker são idênticos aos do Podman (`make verificar`,
+  `analise/comparar.sh`: 2 pares idênticos, 0 divergentes).
