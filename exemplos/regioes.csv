@@ -2,12 +2,19 @@ programa,roi,regiao
 soma_vetor,1,cache fria
 soma_vetor,2,cache quente
 soma_vetor,3,ROI vazia
-bubble_sort,1,vetor aleatório
-bubble_sort,2,vetor já ordenado
+ordenacao,1,bubble sort (aleatório)
+ordenacao,2,bubble sort (já ordenado)
+ordenacao,3,quicksort (aleatório)
 busca_binaria,1,busca linear
 busca_binaria,2,busca binária
 fibonacci,1,recursivo
 fibonacci,2,iterativo (2000×)
+fatorial,1,recursivo (2000×)
+fatorial,2,iterativo (2000×)
+mdc,1,Euclides (resto)
+mdc,2,binário (sem divisão)
+grafo,1,BFS na grade
+grafo,2,BFS em grafo aleatório
 regressao_linear,1,treino
 perceptron,1,treino
 mlp_xor,1,treino

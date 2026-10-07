@@ -2,7 +2,7 @@
 # Confere a CORREÇÃO dos exemplos antes de simulá-los (o gem5 mede, não valida):
 #  1) compila cada exemplo nativamente (x86-64, no container, -DSEM_GEM5 — as
 #     marcações de ROI viram no-ops) e mostra a saída;
-#  2) para as redes neurais, compara com a referência em Python
+#  2) para a busca em grafo e as redes neurais, compara com a referência em Python
 #     (exemplos/referencia/), linha a linha — também no container
 #     (Python 3.12 e numpy 1.26.4 fixados na imagem).
 # Uso (na raiz do repo): ./exemplos/conferir.sh   — ou: make conferir
@@ -21,7 +21,7 @@ nativo() {   # nativo <programa> [flags extras]
   "$OUT/$p"
 }
 
-for p in soma_vetor bubble_sort busca_binaria fibonacci; do
+for p in soma_vetor ordenacao busca_binaria fibonacci fatorial mdc; do
   echo "== $p"; nativo "$p"
 done
 for n in 16 32 64 128; do
@@ -46,6 +46,7 @@ filtro='^  (época|w =)'
 compara regressao_linear \
   "$(nativo regressao_linear | grep -E "$filtro")" \
   "$(ref regressao_linear.py | sed -n '/^4)/,/^5)/p' | grep -E "$filtro")"
+compara grafo "$(nativo grafo)" "$(ref grafo.py)"
 compara perceptron "$(nativo perceptron)" "$(ref perceptron.py)"
 compara mlp_xor "$(nativo mlp_xor)" "$(ref mlp_xor.py)"
 

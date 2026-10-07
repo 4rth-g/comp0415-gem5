@@ -28,11 +28,16 @@ mix   <- lido$mix
 write_csv(dados, file.path(DIR_OUT, "metricas.csv"))
 write_csv(mix, file.path(DIR_OUT, "mix.csv"))
 
-base  <- na_base(dados)
+# ordem dos programas nas figuras = ordem do artigo: clássicos, matrizes,
+# redes neurais
+ORDEM <- c("soma_vetor", "ordenacao", "busca_binaria", "grafo", "fibonacci",
+           "fatorial", "mdc", "camada_densa", "regressao_linear", "perceptron",
+           "mlp_xor")
+base  <- na_base(dados) |> arrange(match(programa, ORDEM), n, roi, cpu)
 # visão geral: da camada densa, só o tamanho N = 64
 geral <- base |> filter(is.na(n) | n == 64) |>
   mutate(rotulo = if_else(is.na(n), programa, paste0(programa, " (N=", n, ")")))
-rois  <- geral |> filter(roi > 0) |>
+rois  <- geral |> filter(roi > 0) |> arrange(match(programa, ORDEM), roi, cpu) |>
   mutate(rotulo_roi = paste0(rotulo, ": ", regiao),
          rotulo_roi = factor(rotulo_roi, levels = unique(rotulo_roi)))
 
@@ -69,7 +74,7 @@ d1 <- geral |> filter(cpu == "atomic") |>
   summarise(`programa inteiro` = instrucoes[roi == 0],
             `só as ROIs` = sum(instrucoes[roi > 0]), .groups = "drop") |>
   pivot_longer(-rotulo, names_to = "medida", values_to = "instrucoes") |>
-  mutate(rotulo = reorder(rotulo, instrucoes, max))
+  mutate(rotulo = factor(rotulo, levels = rev(unique(geral$rotulo))))
 g1 <- ggplot(d1, aes(instrucoes, rotulo)) +
   geom_line(aes(group = rotulo), colour = GRADE, linewidth = 2) +
   geom_point(aes(colour = medida), size = 3) +
@@ -82,7 +87,7 @@ g1 <- ggplot(d1, aes(instrucoes, rotulo)) +
   labs(x = "instruções simuladas (escala log)", y = NULL,
        title = "Instruções do programa inteiro × só das regiões de interesse") +
   tema
-salvar(g1, "fig_instrucoes", h = 3.2)
+salvar(g1, "fig_instrucoes", h = 0.24 * n_distinct(d1$rotulo) + 1)
 
 # 2) IPC de cada ROI em cada modelo de CPU: mapa de calor --------------------
 #    sem o atomic: é um modelo funcional, seus "ciclos" não medem tempo
@@ -101,7 +106,7 @@ g2 <- ggplot(d2, aes(cpu, rotulo_roi, fill = ipc)) +
        caption = "Mesmas instruções em todas as colunas: muda só a microarquitetura simulada.") +
   tema + theme(panel.grid = element_blank(), legend.position = "right",
                axis.text.x = element_text(size = 10, face = "bold", colour = TINTA))
-salvar(g2, "fig_ipc", w = 6.5, h = 4.8)
+salvar(g2, "fig_ipc", w = 6.5, h = 0.22 * n_distinct(d2$rotulo_roi) + 1.2)
 
 # 3) mix de instruções por ROI (não depende da CPU; usa o atomic) --------------
 d3 <- mix |> semi_join(rois |> filter(cpu == "atomic", regiao != "ROI vazia"),
@@ -121,7 +126,7 @@ g3 <- ggplot(d3, aes(frac, rotulo_roi, fill = grupo)) +
        title = "Mix de instruções por região de interesse") +
   guides(fill = guide_legend(nrow = 2)) +
   tema + theme(panel.grid.major.y = element_blank())
-salvar(g3, "fig_mix", h = 4.4)
+salvar(g3, "fig_mix", h = 0.2 * n_distinct(d3$rotulo_roi) + 1.3)
 
 # 4) erro de predição de desvios (CPUs com preditor) ---------------------------
 d4 <- rois |> filter(cpu %in% c("minor", "o3"), desvios > 0, regiao != "ROI vazia") |>
@@ -137,7 +142,7 @@ g4 <- ggplot(d4, aes(erro_predicao, rotulo_roi, fill = cpu,
   labs(x = "desvios condicionais com predição errada", y = NULL,
        title = "Erro de predição de desvios por região de interesse") +
   tema + theme(panel.grid.major.y = element_blank())
-salvar(g4, "fig_predicao", h = 4.6)
+salvar(g4, "fig_predicao", h = 0.3 * n_distinct(d4$rotulo_roi) + 1)
 
 # 5–6) camada densa: tamanho N e tamanho da L1D (CPU o3) ----------------------
 # IPC engana aqui: as duas ordens executam números diferentes de instruções
