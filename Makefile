@@ -12,6 +12,7 @@
 #   make artigo     artigo/artigo.docx e artigo/artigo.pdf (Typst) no modelo da disciplina
 #   make slides     slides/slides.html (revealjs, arquivo único; S = notas do apresentador)
 #   make slides-pdf slides/slides.pdf (impressão do revealjs via Chromium headless)
+#   make roteiro    slides/roteiro.docx (roteiro do vídeo, gerado de slides/roteiro.md)
 #   make tudo       bin + sim + varredura + visual + analise + artigo
 #
 # Reprodução (em outra máquina, ou para conferir esta):
@@ -45,7 +46,7 @@ LDLIBS   := -L/gem5/util/m5/build/riscv/out -lm5
 PROGS := $(filter-out camada_densa,$(basename $(notdir $(wildcard exemplos/*.cpp))))
 BINS  := $(PROGS:%=bin/%_riscv) $(TAMANHOS:%=bin/camada_densa_N%_riscv)
 
-.PHONY: tudo bin conferir sim varredura visual analise artigo slides slides-pdf testar \
+.PHONY: tudo bin conferir sim varredura visual analise artigo slides slides-pdf roteiro testar \
         verificar reproduzir limpar
 tudo: bin sim varredura visual analise artigo slides
 
@@ -101,6 +102,9 @@ slides-pdf: slides
 	  --run-all-compositor-stages-before-draw \
 	  --virtual-time-budget=60000 --print-to-pdf=slides/slides.pdf \
 	  "file://$(CURDIR)/slides/slides.html?print-pdf"
+
+roteiro:
+	python3 slides/roteiro_docx.py
 
 testar:
 	Rscript analise/testes.R
