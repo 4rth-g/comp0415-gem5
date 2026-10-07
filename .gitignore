@@ -42,3 +42,6 @@ exemplos/compile_flags.txt
 
 /.quarto/
 **/*.quarto_ipynb
+
+# gravações do vídeo (grandes demais para o Git)
+videos/
