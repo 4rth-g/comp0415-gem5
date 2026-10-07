@@ -1,0 +1,16 @@
+Global frequency set at 1000000000000 ticks per second
+Redirecting stdout to resultados/busca_binaria_minor_20261006T232007_7b6fcc6f7d/simout.txt
+Redirecting stderr to resultados/busca_binaria_minor_20261006T232007_7b6fcc6f7d/simerr.txt
+gem5 Simulator System.  https://www.gem5.org
+gem5 is copyrighted software; use the --copyright option for details.
+
+gem5 version 25.1.0.1
+gem5 compiled Sep 25 2026 02:41:57
+gem5 started Oct  7 2026 02:20:08
+gem5 executing on a2bb22b846e6, pid 1
+command line: /gem5/build/RISCV/gem5.opt --outdir=resultados/busca_binaria_minor_20261006T232007_7b6fcc6f7d --redirect-stdout --redirect-stderr configs_local/se_run.py bin/busca_binaria_riscv --cpu minor --l1d 32KiB --l1i 32KiB --l2 256KiB --clk 1GHz
+
+info: Standard input is not a terminal, disabling listeners.
+>>> Rodando bin/busca_binaria_riscv com CPU=minor L1D=32KiB L1I=32KiB L2=256KiB clk=1GHz
+500 consultas: soma dos indices linear=270615 binaria=270615 (iguais)
+>>> Simulação concluída.

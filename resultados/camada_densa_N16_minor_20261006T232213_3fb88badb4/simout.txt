@@ -1,0 +1,16 @@
+Global frequency set at 1000000000000 ticks per second
+Redirecting stdout to resultados/camada_densa_N16_minor_20261006T232213_3fb88badb4/simout.txt
+Redirecting stderr to resultados/camada_densa_N16_minor_20261006T232213_3fb88badb4/simerr.txt
+gem5 Simulator System.  https://www.gem5.org
+gem5 is copyrighted software; use the --copyright option for details.
+
+gem5 version 25.1.0.1
+gem5 compiled Sep 25 2026 02:41:57
+gem5 started Oct  7 2026 02:22:14
+gem5 executing on ba49c2db1dfb, pid 1
+command line: /gem5/build/RISCV/gem5.opt --outdir=resultados/camada_densa_N16_minor_20261006T232213_3fb88badb4 --redirect-stdout --redirect-stderr configs_local/se_run.py bin/camada_densa_N16_riscv --cpu minor --l1d 32KiB --l1i 32KiB --l2 256KiB --clk 1GHz
+
+info: Standard input is not a terminal, disabling listeners.
+>>> Rodando bin/camada_densa_N16_riscv com CPU=minor L1D=32KiB L1I=32KiB L2=256KiB clk=1GHz
+N=16  soma(Y)=154.898530  max|diferença entre as 3 ordens|=0.00e+00
+>>> Simulação concluída.

@@ -1,0 +1,18 @@
+{
+  "timestamp": "2026-10-06T23:43:25-03:00",
+  "hash": "83847631ab",
+  "binario": "bin/camada_densa_N128_riscv",
+  "binario_sha256": "af0c85d8049767e09adb3d2383e216043c3060a3435536ab1270ae5dfd92ed03",
+  "cpu": "minor",
+  "parametros": {"l1d": "32KiB", "l1i": "32KiB", "l2": "256KiB", "clk": "1GHz"},
+  "config": "configs_local/se_run.py",
+  "config_sha256": "3c7233737c8db258f949029f8fe9d25824d95f1b3857903d65354e2beb09e43e",
+  "gem5_commit": "f5c5a6e390f55dd5984977815bf9d0bd05da6945",
+  "gem5_build_repo_commit": "e969dc7",
+  "containerfile_sha256": "143e167229a61e1e0e38e35e7a491f3c51df324d4061806c1eac705db7dc7812",
+  "imagem": "gem5-riscv:local",
+  "imagem_id": "a5037347f9b176533506c45d46f6da155e40f8bc0df5ca0dd5c2345662ac0e93",
+  "motor": "podman",
+  "repo_commit": "92e2f39",
+  "host": "thinkpad"
+}

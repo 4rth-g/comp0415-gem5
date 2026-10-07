@@ -1,0 +1,17 @@
+Global frequency set at 1000000000000 ticks per second
+Redirecting stdout to resultados/fibonacci_atomic_20261006T232014_410a549b69/simout.txt
+Redirecting stderr to resultados/fibonacci_atomic_20261006T232014_410a549b69/simerr.txt
+gem5 Simulator System.  https://www.gem5.org
+gem5 is copyrighted software; use the --copyright option for details.
+
+gem5 version 25.1.0.1
+gem5 compiled Sep 25 2026 02:41:57
+gem5 started Oct  7 2026 02:20:15
+gem5 executing on 2d7929fb5867, pid 1
+command line: /gem5/build/RISCV/gem5.opt --outdir=resultados/fibonacci_atomic_20261006T232014_410a549b69 --redirect-stdout --redirect-stderr configs_local/se_run.py bin/fibonacci_riscv --cpu atomic --l1d 32KiB --l1i 32KiB --l2 256KiB --clk 1GHz
+
+info: Standard input is not a terminal, disabling listeners.
+>>> Rodando bin/fibonacci_riscv com CPU=atomic L1D=32KiB L1I=32KiB L2=256KiB clk=1GHz
+fib_rec(20)  = 6765
+fib_iter(20) = 6765
+>>> Simulação concluída.

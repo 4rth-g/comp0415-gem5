@@ -1,0 +1,17 @@
+Global frequency set at 1000000000000 ticks per second
+Redirecting stdout to resultados/perceptron_minor_20261006T232059_733804c9cd/simout.txt
+Redirecting stderr to resultados/perceptron_minor_20261006T232059_733804c9cd/simerr.txt
+gem5 Simulator System.  https://www.gem5.org
+gem5 is copyrighted software; use the --copyright option for details.
+
+gem5 version 25.1.0.1
+gem5 compiled Sep 25 2026 02:41:57
+gem5 started Oct  7 2026 02:21:00
+gem5 executing on 369a60788814, pid 1
+command line: /gem5/build/RISCV/gem5.opt --outdir=resultados/perceptron_minor_20261006T232059_733804c9cd --redirect-stdout --redirect-stderr configs_local/se_run.py bin/perceptron_riscv --cpu minor --l1d 32KiB --l1i 32KiB --l2 256KiB --clk 1GHz
+
+info: Standard input is not a terminal, disabling listeners.
+>>> Rodando bin/perceptron_riscv com CPU=minor L1D=32KiB L1I=32KiB L2=256KiB clk=1GHz
+convergiu em 21 épocas; erros por época: [42, 8, 17, 4, 8, 21, 8, 14, 15, 6, 4, 12, 17, 8, 4, 12, 15, 8, 4, 2, 0]
+w = (0.424397, 1.079948)   b = -0.900000
+>>> Simulação concluída.
