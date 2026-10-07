@@ -9,7 +9,8 @@
 #   make visual     pipeline do o3, trace RISC-V e assembly de uma ROI da soma
 #   make analise    tabelas, gráficos e diagrama do sistema (analise/)
 #   make testar     testes do parser de estatísticas (analise/testes.R)
-#   make tudo       bin + sim + varredura + visual + analise
+#   make artigo     artigo/artigo.docx no modelo da disciplina (Quarto)
+#   make tudo       bin + sim + varredura + visual + analise + artigo
 #
 # Reprodução (validação cruzada, na máquina da dupla):
 #   make verificar  recompila do zero e confere com o bin/SHA256SUMS versionado
@@ -42,9 +43,9 @@ LDLIBS   := -L/gem5/util/m5/build/riscv/out -lm5
 PROGS := $(filter-out camada_densa,$(basename $(notdir $(wildcard exemplos/*.cpp))))
 BINS  := $(PROGS:%=bin/%_riscv) $(TAMANHOS:%=bin/camada_densa_N%_riscv)
 
-.PHONY: tudo bin conferir sim varredura visual analise testar verificar \
-        reproduzir limpar
-tudo: bin sim varredura visual analise
+.PHONY: tudo bin conferir sim varredura visual analise artigo testar \
+        verificar reproduzir limpar
+tudo: bin sim varredura visual analise artigo
 
 bin: bin/SHA256SUMS
 
@@ -80,6 +81,10 @@ analise:
 	  $(EM_CONTAINER) dot -Tpdf $$d.dot -o analise/saida/fig_$$n.pdf && \
 	  $(EM_CONTAINER) dot -Tpng -Gdpi=300 $$d.dot -o analise/saida/fig_$$n.png || exit 1; \
 	done
+
+artigo:
+	python3 artigo/preparar_modelo.py
+	quarto render artigo/artigo.qmd --to docx
 
 testar:
 	Rscript analise/testes.R

@@ -1,0 +1,287 @@
+---
+lang: pt-BR
+format:
+  docx:
+    reference-doc: referencia.docx
+    fig-dpi: 300
+bibliography: referencias.bib
+csl: abnt-numerico.csl
+execute:
+  echo: false
+  warning: false
+  message: false
+fig-cap-location: bottom
+tbl-cap-location: top
+---
+
+```{r}
+#| label: setup
+suppressPackageStartupMessages({ library(dplyr); library(readr); library(knitr) })
+SAIDA <- "../analise/saida"
+m <- read_csv(file.path(SAIDA, "metricas.csv"), show_col_types = FALSE)
+base <- m |> filter(l1d == "32KiB", l1i == "32KiB", l2 == "256KiB", clk == "1GHz")
+
+# valor de uma métrica: programa, região (ROI), CPU e, na camada densa, N
+v <- function(prog, reg, cpu_, col, n_ = NA, d = base) {
+  x <- d |> filter(programa == prog, regiao == reg, cpu == cpu_)
+  if (!is.na(n_)) x <- filter(x, n == n_)
+  stopifnot(nrow(x) == 1)
+  x[[col]]
+}
+f   <- function(x, d = 2) formatC(x, format = "f", digits = d, big.mark = ".", decimal.mark = ",")
+mil <- function(x) formatC(round(x), format = "d", big.mark = ".")
+pct <- function(x, d = 1) paste0(f(100 * x, d), "%")
+fig <- function(nome) file.path(SAIDA, paste0(nome, ".png"))
+
+# no Fibonacci não há nada além das duas ROIs: o resto é inicialização e saída
+fora_fib <- v("fibonacci", "programa inteiro", "atomic", "instrucoes") -
+  v("fibonacci", "recursivo", "atomic", "instrucoes") -
+  v("fibonacci", "iterativo (2000×)", "atomic", "instrucoes")
+soma_laco  <- v("soma_vetor", "cache quente", "atomic", "instrucoes")
+cd <- function(reg, cpu_, col) v("camada_densa", reg, cpu_, col, n_ = 64)
+mix <- read_csv(file.path(SAIDA, "mix.csv"), show_col_types = FALSE)
+fp <- mix |> filter(cpu == "atomic", roi > 0, programa %in% c("regressao_linear", "perceptron", "mlp_xor")) |>
+  group_by(programa) |> summarise(fp = sum(qtd[grupo == "ponto flutuante"]) / sum(qtd))
+```
+
+::: {custom-style="Title"}
+Simulação Arquitetural com o gem5 sobre RISC-V: Instalação Reprodutível e Exemplos Básicos, de Algoritmos Clássicos a Redes Neurais
+:::
+
+::: {custom-style="Author"}
+Arthur [SOBRENOME], [NOME DO(A) COLEGA]
+:::
+
+::: {custom-style="Affiliation"}
+Departamento de Computação (DCOMP), Universidade Federal de Sergipe – UFS
+:::
+
+::: {custom-style="Affiliation"}
+[e-mail 1], [e-mail 2]
+:::
+
+::: {custom-style="Abstract Title"}
+Resumo
+:::
+
+::: {custom-style="Abstract Text"}
+Este artigo apresenta o gem5, simulador de arquitetura de computadores de código aberto, e o seu uso para executar algoritmos básicos sobre a ISA RISC-V. Após situar o gem5 entre outros simuladores, descrevemos uma instalação reprodutível: o simulador, o compilador cruzado e as bibliotecas ficam fixados em um container, e uma mesma simulação produz estatísticas idênticas com motores de container diferentes. Oito programas — soma de vetor, ordenação, busca, Fibonacci e quatro exemplos de redes neurais — foram executados em quatro modelos de processador do gem5, medindo apenas as regiões de interesse de cada algoritmo. Os exemplos mostram o que um simulador revela e um computador real esconde: a inicialização do programa domina programas pequenos, o mesmo código roda com IPC de `r f(v("fibonacci", "recursivo", "timing", "ipc"))` a `r f(v("fibonacci", "recursivo", "o3", "ipc"))` conforme a microarquitetura, e, em uma camada densa de rede neural, a ordem de laço que melhor usa a cache é a mais lenta no processador fora de ordem, por causa da predição de dependências de memória. Link do vídeo: [LINK DO VÍDEO — até 10 minutos].
+:::
+
+# 1. Introdução
+
+Todo programa executa sobre uma arquitetura: um conjunto de instruções (ISA), uma organização interna do processador — pipeline, execução fora de ordem, predição de desvios — e uma hierarquia de memória com caches. O desempenho de um mesmo algoritmo depende dessas escolhas, e entendê-las é o objetivo de uma disciplina de arquitetura de computadores [@hennessy2017quantitative; @patterson2020riscv; @stallings2022organization; @tanenbaum2013structured].
+
+Observar esses mecanismos em um processador real, porém, é difícil: o hardware não mostra o que acontece dentro do pipeline, contadores de desempenho são limitados e mudar o tamanho de uma cache exige outro chip. Simuladores de arquitetura resolvem isso: modelam o processador em software, permitem trocar qualquer parâmetro e registram cada evento interno. Por isso são a ferramenta central tanto da pesquisa em arquitetura quanto do seu ensino [@akram2019survey; @nikolic2009survey].
+
+Neste trabalho foi selecionado o gem5 [@binkert2011gem5; @lowepower2020gem5v20], simulador amplamente usado na pesquisa, com vários modelos de processador e suporte à ISA RISC-V [@waterman2019riscv]. As contribuições são três: (i) uma instalação reprodutível do gem5, com todas as versões fixadas e verificada com dois motores de container; (ii) oito exemplos básicos — quatro algoritmos clássicos de programação e quatro de redes neurais — executados em quatro modelos de processador, medindo só a região de interesse de cada algoritmo; e (iii) a análise do que o simulador mostra em cada exemplo, incluindo um resultado contraintuitivo sobre a interação entre cache e execução fora de ordem.
+
+A Seção 2 apresenta simuladores de arquitetura e o funcionamento do gem5; a Seção 3, a instalação e a configuração; a Seção 4, os exemplos; as Seções 5 e 6, as conclusões e os trabalhos futuros. Todo o código, as simulações e a análise estão em um repositório público [LINK DO REPOSITÓRIO].
+
+# 2. O Simulador Selecionado: gem5
+
+## 2.1 Simuladores de arquitetura de computadores
+
+Simuladores de arquitetura diferem principalmente no nível de detalhe [@akram2019survey; @hwang2025survey]. Simuladores **funcionais** executam as instruções corretamente, mas não modelam o tempo: servem para rodar e depurar programas. Simuladores **de temporização** (*timing*) modelam também a microarquitetura e estimam quantos ciclos cada instrução leva; os mais detalhados reproduzem o pipeline ciclo a ciclo. Outra distinção é o escopo: simular só a aplicação, com as chamadas de sistema atendidas pelo próprio simulador (*syscall emulation*, SE), ou o sistema completo com sistema operacional (*full system*, FS). Quanto mais detalhe, mais lenta a simulação — de milhões para milhares de instruções simuladas por segundo.
+
+A @tbl-simuladores compara alguns simuladores conhecidos. O QEMU [@bellard2005qemu] é um emulador funcional rápido, baseado em tradução binária dinâmica. O Sniper [@carlson2011sniper; @mallya2018sniper] usa um modelo de temporização por intervalos, mais rápido que o ciclo a ciclo e voltado a processadores com muitos núcleos. Ripes [@petersen2021ripes], WebRISC-V [@giorgi2019webriscv] e MARS [@vollmar2006mars] são simuladores didáticos, com interface gráfica que mostra registradores e o pipeline clássico de cinco estágios, mas limitados a um processador simples [@rodrigues2024mips; @nikolic2009survey].
+
+: Comparação entre simuladores de arquitetura {#tbl-simuladores}
+
+| Simulador | ISA | Nível de detalhe | Interface | Foco |
+|---|---|---|---|---|
+| gem5 | RISC-V, x86, Arm e outras | funcional a ciclo a ciclo; modos SE e FS | linha de comando, configuração em Python | pesquisa e ensino |
+| QEMU | dezenas, inclui RISC-V | funcional (sem tempo) | linha de comando | emulação rápida |
+| Sniper | x86 (RISC-V em extensão) | temporização por intervalos | linha de comando | muitos núcleos |
+| Ripes | RISC-V | pipeline de 5 estágios, ciclo a ciclo | gráfica | ensino |
+| WebRISC-V | RISC-V | pipeline de 5 estágios | navegador | ensino |
+| MARS | MIPS | funcional | gráfica (IDE) | ensino de assembly |
+
+O gem5 foi escolhido por ser o único da tabela que combina RISC-V, vários modelos de processador — do funcional ao fora de ordem detalhado —, hierarquia de caches configurável e estatísticas detalhadas de cada componente. Também é ativamente mantido, amplamente usado em pesquisa [@akram2019survey] e tem documentação e material introdutório [@lowepower2026learning; @aquino2024gem5], inclusive em português [@rigotto2023gem5]. A contrapartida é a ausência de interface gráfica: o gem5 é configurado por scripts e seus resultados são arquivos de texto, que precisam ser processados para virar figuras.
+
+## 2.2 Como o gem5 funciona
+
+O gem5 é um simulador **orientado a eventos**: cada componente agenda eventos para instantes futuros, medidos em *ticks* de 1 ps, e o núcleo do simulador os processa em ordem. Os componentes são *SimObjects* — processadores, caches, barramentos, controladores de memória — escritos em C++ e conectados por portas que trocam pacotes de memória. A montagem do sistema é feita em **Python**: um script instancia os SimObjects, define seus parâmetros e os conecta [@binkert2011gem5; @lowepower2020gem5v20].
+
+Para o processador, o gem5 oferece modelos com níveis crescentes de detalhe, que executam exatamente as mesmas instruções:
+
+- **AtomicSimpleCPU** (*atomic*): funcional; cada acesso à memória termina na hora e o tempo é só estimado;
+- **TimingSimpleCPU** (*timing*): executa uma instrução por vez, mas espera cada acesso à memória atravessar caches e barramentos;
+- **MinorCPU** (*minor*): pipeline em ordem, com estágios de busca, decodificação e execução;
+- **O3CPU** (*o3*): superescalar fora de ordem, com renomeação de registradores, *reorder buffer* (ROB) e execução especulativa.
+
+A memória pode usar o sistema "clássico", com caches de coerência simplificada, ou o Ruby, que modela protocolos de coerência detalhados. Versões recentes oferecem a *Standard Library* do gem5, com componentes prontos — placa, processador, hierarquia de caches e memória — que se combinam em poucas linhas de Python [@lowepower2026learning]. O programa simulado pode se comunicar com o simulador por instruções especiais, que o gem5 trata como eventos para os quais o script de configuração registra tratadores [@pai2026gem5]; este trabalho usa esse mecanismo para delimitar as regiões medidas (Seção 3.4).
+
+Ao final de uma simulação, o gem5 grava na pasta de saída: o `stats.txt`, com milhares de estatísticas (instruções, ciclos, acessos e faltas em cada cache, desvios preditos e errados etc.); o `config.ini`, com todos os parâmetros do sistema simulado; e um diagrama do sistema (`config.dot`). Não há janelas nem gráficos: as figuras deste artigo foram geradas a partir desses arquivos.
+
+# 3. Instalação e Configuração do gem5
+
+## 3.1 Instalação reprodutível
+
+O trabalho foi feito em dupla, em computadores com sistemas diferentes — CachyOS com Podman e Ubuntu com Docker. Para que os dois obtenham o *mesmo* simulador e os *mesmos* resultados, todo o processo roda dentro de um container, com cada versão fixada [@bruce2021gem5art; @pai2026gem5; @malka2024nix; @hausch2025nix]:
+
+- **gem5 25.1.0.1**, compilado de um *commit* fixo do repositório oficial (`f5c5a6e`);
+- **imagem base** oficial do gem5 com as dependências de compilação, referenciada pelo *digest* SHA-256, e não por uma etiqueta que muda com o tempo;
+- **compilador cruzado** RISC-V (g++ 13.3, binutils 2.42, glibc 2.39) instalado de um *snapshot* datado do arquivo do Ubuntu, com as versões explícitas;
+- **pacotes R** da análise fixados em um arquivo de bloqueio (`renv.lock`).
+
+A compilação do gem5 para RISC-V (`scons build/RISCV/gem5.opt`) levou 76 minutos em um Intel i5-1245U com 8 tarefas paralelas e é feita uma única vez. A @fig-fluxo mostra o fluxo completo, do código-fonte ao artigo; um único comando (`make tudo`) refaz todas as etapas.
+
+![Fluxo reprodutível do trabalho. Tudo o que compila ou simula roda no mesmo container; cada simulação recebe um identificador (hash) calculado a partir de todas as suas entradas.](`r fig("fig_fluxo")`){#fig-fluxo width=100%}
+
+A reprodutibilidade foi verificada, não apenas planejada. Cada simulação recebe um *hash* calculado a partir do binário, do script de configuração, do *commit* do gem5, do modelo de CPU e dos parâmetros; como o gem5 é determinístico, simulações com o mesmo hash devem produzir o mesmo `stats.txt`. Construindo a imagem e recompilando os exemplos com dois motores de container diferentes (Podman e Docker), os binários saíram idênticos bit a bit, e simulações refeitas com o Docker produziram estatísticas idênticas às do Podman, exceto as linhas que medem o próprio computador hospedeiro (tempo e memória). [PENDENTE: resultado do `make reproduzir` na máquina Ubuntu do(a) colega.]
+
+## 3.2 Arquitetura configurada
+
+O sistema simulado foi descrito com a *Standard Library* do gem5 em um script curto (`se_run.py`), cujo trecho principal é:
+
+```python
+cache = PrivateL1PrivateL2CacheHierarchy(l1d_size="32KiB", l1i_size="32KiB", l2_size="256KiB")
+memory = SingleChannelDDR3_1600("1GiB")
+processor = SimpleProcessor(cpu_type=CPU, isa=ISA.RISCV, num_cores=1)
+board = SimpleBoard(clk_freq="1GHz", processor=processor, memory=memory, cache_hierarchy=cache)
+board.set_se_binary_workload(BinaryResource(args.binary))
+```
+
+O modelo de CPU (`CPU`) e os tamanhos das caches são parâmetros de linha de comando. A @fig-sistema mostra o sistema resultante e a @tbl-configuracao, os parâmetros efetivamente usados, lidos do `config.ini` gerado pelo próprio gem5.
+
+![Sistema simulado: um núcleo RISC-V, caches L1 de instruções e de dados, L2 privada e memória DDR3.](`r fig("fig_sistema")`){#fig-sistema width=48%}
+
+```{r}
+#| label: tbl-configuracao
+#| tbl-cap: "Configuração do sistema simulado (extraída do config.ini do gem5)"
+read_csv(file.path(SAIDA, "configuracao.csv"), show_col_types = FALSE) |> kable()
+```
+
+## 3.3 Compilação dos exemplos
+
+Os exemplos foram escritos em C++ e compilados para RISC-V de 64 bits (RV64GC) como binários estáticos, pois no modo SE o gem5 não carrega bibliotecas dinâmicas:
+
+```bash
+riscv64-linux-gnu-g++ -O2 -static -march=rv64gc -mabi=lp64d -ffp-contract=off \
+    exemplos/soma_vetor.cpp -o bin/soma_vetor_riscv -lm5
+```
+
+A opção `-ffp-contract=off` impede o compilador de fundir multiplicação e soma em uma só instrução, para que os resultados de ponto flutuante sejam idênticos aos das implementações de referência em Python usadas para conferir os exemplos de redes neurais. Os dados de entrada vêm de um gerador pseudoaleatório com semente fixa, idêntico em C++ e em Python, o que também impede o compilador de calcular os resultados em tempo de compilação.
+
+## 3.4 Execução e regiões de interesse
+
+Cada simulação é disparada por um script que chama o gem5 dentro do container e guarda a saída em uma pasta identificada pelo hash. A @fig-terminal mostra uma execução: o cabeçalho do gem5, a saída do próprio programa simulado e algumas das estatísticas produzidas.
+
+![Execução do gem5 no terminal: simulação da soma de vetor na CPU o3 e trecho do `stats.txt` (região de interesse 2). Texto reproduzido dos arquivos de saída da simulação.](`r fig("fig_terminal")`){#fig-terminal width=100%}
+
+Um binário estático executa cerca de `r mil(fora_fib)` instruções fora do algoritmo — inicializando a biblioteca C antes do `main` e imprimindo o resultado no fim —, mais que o próprio algoritmo em vários exemplos. Para medir só o algoritmo, cada programa marca sua **região de interesse** (ROI) com as chamadas `m5_work_begin` e `m5_work_end` da biblioteca `libm5` do gem5. Essas chamadas executam instruções especiais que o simulador intercepta; o script de configuração registra um tratador para esses eventos que grava e zera as estatísticas. O `stats.txt` fica dividido em trechos — antes, ROI 1, entre, ROI 2, ..., depois —, e a soma de todos os trechos corresponde ao programa inteiro. Uma ROI vazia, sem nada entre as marcações, mede o custo da própria marcação: `r mil(v("soma_vetor", "ROI vazia", "o3", "instrucoes"))` instruções e de `r mil(v("soma_vetor", "ROI vazia", "timing", "ciclos"))` a `r mil(v("soma_vetor", "ROI vazia", "minor", "ciclos"))` ciclos, desprezível frente às ROIs medidas.
+
+# 4. Exemplos Básicos no Simulador
+
+Os oito programas da @tbl-programas cobrem algoritmos típicos de disciplinas de programação e quatro exemplos de redes neurais. Cada um foi executado nos quatro modelos de CPU; a @fig-instrucoes mostra por que medir só as ROIs é necessário.
+
+: Programas executados e o que cada um exercita no processador {#tbl-programas}
+
+| Programa | Regiões de interesse | O que exercita |
+|---|---|---|
+| Soma de vetor (4096 inteiros) | cache fria; cache quente; ROI vazia | acesso sequencial à memória |
+| Bubble sort (256 inteiros) | vetor aleatório; vetor já ordenado | desvios condicionais |
+| Busca (2048 elementos, 500 consultas) | linear; binária | complexidade O(N) × O(log N) |
+| Fibonacci (n = 20) | recursivo; iterativo (2000 vezes) | chamadas de função e pilha |
+| Regressão linear | treino por gradiente descendente | ponto flutuante |
+| Perceptron | treino até convergir | desvio que depende do aprendizado |
+| Rede neural 2-4-1 (XOR) | treino com retropropagação | ponto flutuante e função exponencial |
+| Camada densa, Y = ReLU(XW + b) | três ordens de laço; N = 16 a 128 | hierarquia de memória |
+
+![Instruções executadas no programa inteiro e só nas regiões de interesse (escala logarítmica). Nos programas pequenos, quase tudo é inicialização da biblioteca C.](`r fig("fig_instrucoes")`){#fig-instrucoes width=95%}
+
+## 4.1 Soma de vetor: o pipeline em ação
+
+O laço da soma é compilado para apenas quatro instruções RISC-V (comprimidas, de 16 bits) por elemento:
+
+```text
+loop: c.lw   a5, 0(s0)     # carrega v[i]
+      c.addi s0, 4         # avança o ponteiro
+      c.add  s3, a5        # soma += v[i]
+      bne    s0, s1, loop  # repete até o fim do vetor
+```
+
+Para ver como o processador fora de ordem executa esse laço, o gem5 pode registrar o instante em que cada instrução passa por cada estágio do pipeline. A @fig-pipeline mostra 16 instruções em regime permanente: a cada ciclo, quatro instruções novas são buscadas e, alguns ciclos depois, quatro são confirmadas — uma volta do laço por ciclo, o que dá IPC próximo de 4. Esse tipo de visualização, construída a partir do registro do gem5, substitui a "tela" que o simulador não tem.
+
+![Pipeline do processador o3 executando o laço da soma de vetor, instrução por instrução. Cada barra mostra o tempo que a instrução passou em cada etapa; o círculo marca a confirmação (*commit*).](`r fig("fig_pipeline_soma_vetor_roi2")`){#fig-pipeline width=100%}
+
+O exemplo também mostra o efeito da cache. Na primeira ROI, um buffer de 1 MiB é percorrido antes, expulsando o vetor das caches: cada linha de 64 bytes do vetor falta na L1 e na L2. No processador o3, essa soma leva `r mil(v("soma_vetor", "cache fria", "o3", "ciclos"))` ciclos; repetida logo em seguida, com o vetor já na L1, leva `r mil(v("soma_vetor", "cache quente", "o3", "ciclos"))` ciclos — as mesmas `r mil(soma_laco)` instruções.
+
+## 4.2 Ordenação: o preditor de desvios
+
+O bubble sort compara vizinhos e troca os que estão fora de ordem. Em um vetor aleatório, o desvio "troca ou não troca" é imprevisível; em um vetor já ordenado, o código executa as mesmas comparações, mas nunca troca. Processadores com pipeline tentam adivinhar o resultado de cada desvio para não esperar; quando erram, descartam as instruções buscadas no caminho errado [@smith1981branch]. A @fig-predicao mostra a taxa de erro do preditor em cada ROI: no vetor aleatório, o o3 erra `r pct(v("bubble_sort", "vetor aleatório", "o3", "erro_predicao"))` dos desvios condicionais e atinge IPC de `r f(v("bubble_sort", "vetor aleatório", "o3", "ipc"))`; no vetor ordenado, erra `r pct(v("bubble_sort", "vetor já ordenado", "o3", "erro_predicao"))` e atinge `r f(v("bubble_sort", "vetor já ordenado", "o3", "ipc"))`.
+
+![Fração dos desvios condicionais com predição errada, nas CPUs que têm preditor (minor e o3).](`r fig("fig_predicao")`){#fig-predicao width=95%}
+
+## 4.3 Busca linear e busca binária
+
+As duas buscas respondem às mesmas 500 consultas no mesmo vetor ordenado. A busca linear executa `r mil(v("busca_binaria", "busca linear", "o3", "instrucoes"))` instruções e a binária, `r mil(v("busca_binaria", "busca binária", "o3", "instrucoes"))` — `r round(v("busca_binaria", "busca linear", "o3", "instrucoes") / v("busca_binaria", "busca binária", "o3", "instrucoes"))` vezes menos, refletindo O(N) contra O(log N). O ganho em ciclos no o3, porém, é menor: `r round(v("busca_binaria", "busca linear", "o3", "ciclos") / v("busca_binaria", "busca binária", "o3", "ciclos"))` vezes. A busca linear tem desvios previsíveis e roda com IPC de `r f(v("busca_binaria", "busca linear", "o3", "ipc"))`; na binária, cada comparação decide para que lado seguir, o preditor erra `r pct(v("busca_binaria", "busca binária", "o3", "erro_predicao"))` dos desvios e o IPC cai para `r f(v("busca_binaria", "busca binária", "o3", "ipc"))`. A complexidade do algoritmo diz quantas instruções serão executadas; a microarquitetura diz quanto custa cada uma.
+
+## 4.4 Fibonacci recursivo e iterativo
+
+A versão recursiva de Fibonacci(20) faz milhares de chamadas de função, com escritas e leituras na pilha a cada chamada; a iterativa calcula o mesmo valor com um laço de 20 passos (repetido 2000 vezes na ROI, para que as medidas sejam estáveis). A recursão executa `r mil(v("fibonacci", "recursivo", "o3", "instrucoes"))` instruções para um único valor, contra cerca de `r mil(v("fibonacci", "iterativo (2000×)", "o3", "instrucoes") / 2000)` por chamada da versão iterativa. Ainda assim, a recursão é o caso de maior IPC no o3, `r f(v("fibonacci", "recursivo", "o3", "ipc"))`: as chamadas são previsíveis e o processador sobrepõe instruções de várias chamadas.
+
+## 4.5 Visão geral: o mesmo programa em microarquiteturas diferentes
+
+A @fig-ipc reúne o IPC de todas as ROIs nos três modelos de CPU que medem tempo. Em cada linha, o número de instruções é o mesmo; só muda a microarquitetura. O timing, que espera cada acesso à memória, fica abaixo de 1 em todos os casos. O minor, com pipeline em ordem, ganha onde há pouca dependência entre instruções, mas perde quando o preditor erra (perceptron, busca binária). O o3 chega a IPC de 3 a 5 quando há paralelismo entre instruções e fica perto de 1 quando os desvios são imprevisíveis. É exatamente o tipo de comparação que um simulador funcional não consegue fazer.
+
+![IPC de cada região de interesse nos modelos timing, minor e o3. O modelo atomic, funcional, não aparece porque seus ciclos não medem tempo.](`r fig("fig_ipc")`){#fig-ipc width=95%}
+
+## 4.6 Redes neurais
+
+Os três exemplos de redes neurais implementam o treino de modelos clássicos: regressão linear por gradiente descendente, perceptron [@rosenblatt1958perceptron] e uma rede de uma camada oculta que aprende a função XOR com retropropagação [@rumelhart1986backprop]. Cada um foi conferido contra uma implementação de referência em Python: perdas e pesos finais coincidem até a sexta casa decimal. A diferença mais visível em relação aos exemplos clássicos está no tipo das instruções (@fig-mix): de `r pct(min(fp$fp), 0)` a `r pct(max(fp$fp), 0)` das instruções do treino são de ponto flutuante, contra nenhuma nos algoritmos clássicos.
+
+![Mix de instruções executadas em cada região de interesse.](`r fig("fig_mix")`){#fig-mix width=95%}
+
+O perceptron ilustra um desvio que depende do aprendizado: a atualização dos pesos só acontece quando o modelo erra a amostra. Nas primeiras épocas o modelo erra muito e o desvio é imprevisível; perto da convergência quase nunca é tomado. O minor, sensível a erros de predição, roda o treino com IPC de `r f(v("perceptron", "treino", "minor", "ipc"))`, abaixo do timing (`r f(v("perceptron", "treino", "timing", "ipc"))`); o o3 chega a `r f(v("perceptron", "treino", "o3", "ipc"))`.
+
+## 4.7 Camada densa: cache ou dependência de memória?
+
+A inferência de uma camada densa, Y = ReLU(XW + b), é um produto de matrizes. O mesmo cálculo foi escrito em três ordens de laço, com resultado idêntico bit a bit:
+
+- **i-j-k**: acumula cada elemento de Y em um registrador, percorrendo W por coluna — a cada passo, salta N × 8 bytes na memória;
+- **i-k-j**: percorre W e Y por linha, acesso sequencial e amigável à cache [@lam1991blocked], mas lê Y[i][j] logo depois de tê-lo gravado;
+- **i-k-j com 4 valores de k por vez**: o mesmo acesso por linha, acumulando em registrador e gravando Y quatro vezes menos.
+
+A análise só de cache prevê que a i-k-j seja a mais rápida quando as matrizes não cabem na L1 (N ≥ 64). É o que acontece no processador timing (@tbl-camada). No o3, porém, a i-k-j é duas vezes mais lenta que a i-j-k, apesar de ter `r round(cd("ordem i-j-k", "o3", "mpki_l1d") / cd("ordem i-k-j", "o3", "mpki_l1d"))` vezes menos faltas na L1.
+
+```{r}
+#| label: tbl-camada
+#| tbl-cap: "Camada densa com N = 64: custo por multiplicação-acumulação e eventos de memória"
+regs <- c("ordem i-j-k", "ordem i-k-j", "ordem i-k-j (4 k por vez)")
+tibble(
+  `Ordem` = c("i-j-k", "i-k-j", "i-k-j, 4 k por vez"),
+  `Faltas L1D / mil instr. (o3)` = f(sapply(regs, cd, "o3", "mpki_l1d"), 1),
+  `Cargas retidas (o3)` = mil(sapply(regs, cd, "o3", "cargas_retidas")),
+  `Ciclos / mult.-acum. (o3)` = f(sapply(regs, cd, "o3", "ciclos_por_mac")),
+  `Ciclos / mult.-acum. (timing)` = f(sapply(regs, cd, "timing", "ciclos_por_mac"), 1)
+) |> kable(align = "lrrrr")
+```
+
+A explicação está em um mecanismo do processador fora de ordem: a **predição de dependências de memória**. Para executar leituras antes de escritas anteriores, o o3 precisa adivinhar se elas acessam o mesmo endereço; o gem5 implementa o preditor *store sets* [@chrysos1998storesets], que aprende quais leituras dependem de quais escritas. Na i-k-j, a leitura de Y[i][j] depende, de fato, da escrita feita alguns ciclos antes; o preditor aprende isso e passa a reter cada leitura até a escrita terminar — `r mil(cd("ordem i-k-j", "o3", "cargas_retidas"))` leituras retidas na ROI —, serializando o laço. A i-j-k acumula em registrador, sem esse padrão; suas faltas na cache são em boa parte escondidas pela execução fora de ordem.
+
+O terceiro laço funciona como experimento de controle: mantém o mesmo padrão de acesso à cache da i-k-j, mas grava Y quatro vezes menos. As leituras retidas caem para `r mil(cd("ordem i-k-j (4 k por vez)", "o3", "cargas_retidas"))` e o custo cai de `r f(cd("ordem i-k-j", "o3", "ciclos_por_mac"))` para `r f(cd("ordem i-k-j (4 k por vez)", "o3", "ciclos_por_mac"))` ciclos por multiplicação-acumulação, praticamente sem mudar as faltas de cache (`r mil(cd("ordem i-k-j", "o3", "l1d_falhas"))` contra `r mil(cd("ordem i-k-j (4 k por vez)", "o3", "l1d_falhas"))`). As Figuras [-@fig-camada] e [-@fig-varredura] completam o quadro: variando N, as faltas da i-j-k disparam quando as matrizes deixam de caber na L1; variando o tamanho da L1, o custo da i-j-k cai a partir de 32 KiB, enquanto o da i-k-j não muda, porque não é a cache que a limita.
+
+![Camada densa no o3, variando o tamanho N das matrizes: custo por multiplicação-acumulação, faltas na L1D e leituras retidas pelo preditor de dependências.](`r fig("fig_camada_n")`){#fig-camada width=100%}
+
+![Camada densa com N = 64 no o3, variando o tamanho da cache L1 de dados.](`r fig("fig_varredura_l1d")`){#fig-varredura width=100%}
+
+# 5. Conclusões
+
+Este trabalho apresentou o gem5, justificou sua escolha frente a outros simuladores e mostrou, com oito programas, o que ele revela sobre a execução de algoritmos em um processador RISC-V. O mais significativo foi ver na prática conceitos que, na teoria, aparecem separados: o mesmo binário, com as mesmas instruções, rodando com IPC de `r f(v("fibonacci", "recursivo", "timing", "ipc"))` a `r f(v("fibonacci", "recursivo", "o3", "ipc"))` conforme a microarquitetura; os erros do preditor de desvios quase dobrando o tempo do bubble sort; a complexidade O(log N) da busca binária pagando parte do ganho em desvios imprevisíveis. O resultado mais surpreendente foi a camada densa: a ordem de laço que a teoria de cache recomenda é a mais lenta no processador fora de ordem, e só as estatísticas internas do simulador — leituras retidas pelo preditor de dependências — permitiram explicar por quê e confirmar a explicação com um experimento de controle.
+
+As principais dificuldades foram práticas. A compilação do gem5 leva mais de uma hora e depende de muitas bibliotecas, o que motivou o uso de containers. A inicialização da biblioteca C domina programas pequenos, o que exigiu marcar as regiões de interesse. E nem todo experimento funcionou: zerar periodicamente o preditor de dependências do gem5, a primeira tentativa de controle, não alterou nenhuma estatística, porque a dependência volta a ser prevista logo após cada limpeza.
+
+Como todo simulador, o gem5 é um modelo: seus números não são os de um processador real específico, e a literatura documenta erros de simulação relevantes [@desikan2001error; @gutierrez2014sources; @akram2019validation]. Para o objetivo deste trabalho — observar e comparar mecanismos —, o que importa é o comportamento relativo entre configurações, que o simulador reproduz de forma controlada e, como verificado, reprodutível.
+
+# 6. Ideias para Trabalhos Futuros
+
+Na linha da literatura, o próximo passo natural é o modo *full system*, executando um Linux completo sobre o processador simulado [@bruce2021gem5art; @pai2026gem5], e o sistema de memória Ruby, para estudar coerência de caches em processadores com vários núcleos. Comparar os resultados com um processador RISC-V real permitiria medir o erro do modelo, como fazem os trabalhos de validação [@akram2019validation; @gutierrez2014sources].
+
+Como ideias próprias: (i) estender os exemplos de redes neurais para convolução e para inferência quantizada em inteiros de 8 bits, comparando o mix de instruções e o uso da cache; (ii) explorar a extensão vetorial do RISC-V (RVV) no produto de matrizes; (iii) decompor o CPI do o3 em causas (faltas de cache, erros de predição, dependências), generalizando a análise da Seção 4.7; e (iv) usar o fluxo reprodutível deste trabalho como material de aula, combinando o gem5 a um simulador visual como o Ripes [@petersen2021ripes] para conectar o pipeline de cinco estágios ao processador fora de ordem.
+
+# 7. Referências
+
+::: {#refs}
+:::

@@ -14,6 +14,12 @@ resultados/*/*
 # Saída do relatorio.R (regenerável com `make analise`)
 analise/saida/
 
+# Artigo: gerado por `make artigo`
+artigo/artigo.docx
+artigo/referencia.docx
+artigo/.quarto/
+artigo/*_files/
+
 # R
 .Rhistory
 .Rproj.user/
