@@ -31,15 +31,18 @@ configs_local/
 exemplos/
   comum.h              # marcação de ROI (m5_work_begin/end) + gerador LCG compartilhado
   soma_vetor.cpp       # cache fria × quente + ROI vazia    (acesso sequencial; custo da marcação)
-  bubble_sort.cpp      # vetor aleatório × já ordenado     (preditor de desvios)
+  ordenacao.cpp        # bubble (aleatório × ordenado) × quicksort (preditor; complexidade)
   busca_binaria.cpp    # busca linear × binária            (O(N) × O(log N))
-  fibonacci.cpp        # recursivo × iterativo (2000×)     (chamadas de função, pilha)
+  grafo.cpp            # BFS em grade × grafo aleatório    (localidade de memória)
+  fibonacci.cpp        # recursivo × iterativo (2000×)     (número de chamadas)
+  fatorial.cpp         # recursivo × iterativo (2000×)     (custo de uma chamada)
+  mdc.cpp              # Euclides × binário                (latência da divisão)
   regressao_linear.cpp # gradiente descendente             (ponto flutuante)
   perceptron.cpp       # regra de Rosenblatt               (desvio que depende do aprendizado)
   mlp_xor.cpp          # rede 2-4-1 aprendendo XOR         (FP + libm + retropropagação)
-  camada_densa.cpp     # Y = ReLU(X·W + b), ordens i-j-k × i-k-j, N = 16..128 (hierarquia de memória)
+  camada_densa.cpp     # multiplicação de matrizes (camada densa), 3 ordens de laço, N = 16..128
   regioes.csv          # nome de cada ROI
-  referencia/*.py      # referências em Python das redes neurais
+  referencia/*.py      # referências em Python (busca em grafo e redes neurais)
   conferir.sh          # compila nativo e compara com as referências (make conferir)
 analise/
   funcoes.R            # parser do stats.txt (segmentos/ROIs), config.ini e O3PipeView
@@ -127,54 +130,30 @@ sha256 do `Containerfile`, o ID da imagem e o host. Ele só é gravado se a
 simulação termina com sucesso. Execuções com o repositório sujo aparecem com
 `-dirty` no `repo_commit`.
 
-## Principais resultados (ROIs, configuração-base)
+## Principais resultados
 
-Figuras e tabelas completas em `analise/saida/` (`make analise`). A
-configuração simulada está em `tabela_configuracao.docx` e `fig_sistema`.
+Os números estão no artigo (`make artigo`), que os lê de
+`analise/saida/metricas.csv`; figuras e tabelas em `analise/saida/`.
 
-- **Inicialização domina programas pequenos**: a soma de 4096 elementos tem
-  16 mil instruções no laço, de quase 170 mil no programa inteiro
-  (`fig_instrucoes`).
-- **Custo da marcação de ROI** (ROI vazia, `tabela_custo_roi`): 5 instruções,
-  de 6 ciclos (atomic, timing) a 25 ciclos (minor). No o3, o marcador esvazia
-  o pipeline (`fig_pipeline_*`), o que pesa em ROIs pequenas.
-- **Mesmas instruções, ciclos muito diferentes** (`fig_ipc`): o
-  Fibonacci recursivo roda com IPC 0,67 no timing e 4,95 no o3. O atomic fica
-  fora dos gráficos de IPC: é funcional, seus "ciclos" não medem tempo.
-- **Cache fria × quente** (soma, o3): a mesma soma leva 5.752 ciclos com o
-  vetor fora das caches e 4.124 com ele na L1D (IPC 2,85 contra 3,97).
-- **Pipeline do o3** (`fig_pipeline_soma_vetor_roi2`): em regime permanente,
-  o laço da soma (4 instruções) completa uma volta por ciclo.
-- **Preditor de desvios** (`fig_predicao`): o bubble sort sobre vetor aleatório
-  erra 3,4% dos desvios no o3 (IPC 1,55); sobre o vetor já ordenado, 0,4%
-  (IPC 2,43). A busca binária, com desvios imprevisíveis, fica com IPC 0,91,
-  contra 3,50 da linear.
-- **Redes neurais trazem ponto flutuante**: de 24% a 51% das instruções do
-  treino, contra 0% nos exemplos clássicos (`fig_mix`).
-- **Hierarquia de memória × dependência de memória** (camada densa N = 64, o3,
-  `fig_camada_n`, `fig_varredura_l1d`):
-
-  | Ordem | Falhas L1D / mil instr. | Cargas retidas | Ciclos por mult.-acum. (o3) | (timing) |
-  |---|---|---|---|---|
-  | i-j-k (W por coluna) | 49,5 | 0 | 2,50 | 16,1 |
-  | i-k-j (W por linha) | 3,0 | 274 mil | 5,12 | 14,4 |
-  | i-k-j, 4 `k` por vez | 3,9 | 77 mil | 2,85 | 8,7 |
-
-  A i-k-j quase não falha na cache e é a mais rápida no timing, como a
-  análise só de cache prevê. No o3, porém, ela é duas vezes mais lenta: cada
-  leitura de `Y[i][j]` vem logo depois da escrita do mesmo endereço, e o
-  preditor de dependência de memória (*store sets*) retém a leitura até a
-  escrita terminar. **Controle**: a variante com 4 valores de `k` por vez
-  mantém o acesso por linha, mas grava `Y` 4× menos. As cargas retidas caem
-  3,6× e o custo cai 44%, sem mudar as falhas de cache. Na varredura da L1D,
-  o custo da i-k-j não muda com o tamanho da cache; o da i-j-k cai a partir de
-  32 KiB.
-- **Um controle que não funcionou**: zerar com mais frequência o preditor de
-  dependência de memória (parâmetro `store_set_clear_period` do o3, de
-  250.000 até 100 acessos) não mudou nenhuma estatística. Pelo rastreamento
-  (`--debug-flags=StoreSet`), a mesma dependência volta a ser prevista logo
-  depois de cada limpeza. Por isso o controle usado é o do código (4 `k` por
-  vez). As execuções desse teste estão no commit `58fde2a`.
-- **Reprodução entre motores de container**: binários compilados e simulações
-  refeitas com Docker são idênticos aos do Podman (`make verificar`,
-  `analise/comparar.sh`: 2 pares idênticos, 0 divergentes).
+- **Inicialização × algoritmo**: um binário estático executa ~117 mil
+  instruções fora do algoritmo; por isso a medição é feita nas ROIs.
+- **Mesmas instruções, ciclos muito diferentes** entre timing, minor e o3
+  (`fig_ipc`).
+- **Preditor de desvios**: bubble sort aleatório × ordenado; quicksort e busca
+  binária com desvios imprevisíveis (`fig_predicao`).
+- **Localidade**: a mesma BFS leva bem mais ciclos no grafo aleatório que na
+  grade, com o mesmo número de instruções.
+- **Custo de chamada**: fatorial recursivo × iterativo, mesmas multiplicações.
+- **Latência da divisão**: no MDC, os modelos sem temporização de unidades
+  funcionais (atomic, timing) apontam Euclides como o mais rápido; o o3
+  (divisão de 20 ciclos) mostra o contrário.
+- **Cache × dependência de memória** (multiplicação de matrizes): a ordem
+  i-k-j quase não falha na cache, mas é a mais lenta no o3, porque o preditor
+  de dependência de memória (*store sets*) retém as leituras de `Y`; o
+  controle com 4 `k` por vez confirma a causa (`fig_camada_n`,
+  `fig_varredura_l1d`).
+- **Um controle que não funcionou**: zerar o preditor de dependência com mais
+  frequência (`store_set_clear_period`) não mudou nenhuma estatística; as
+  execuções desse teste estão no commit `58fde2a`.
+- **Reprodução entre motores de container**: binários e simulações pelo
+  Docker idênticos aos do Podman (`make verificar`, `analise/comparar.sh`).

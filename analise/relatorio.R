@@ -33,10 +33,15 @@ write_csv(mix, file.path(DIR_OUT, "mix.csv"))
 ORDEM <- c("soma_vetor", "ordenacao", "busca_binaria", "grafo", "fibonacci",
            "fatorial", "mdc", "camada_densa", "regressao_linear", "perceptron",
            "mlp_xor")
+NOMES <- c(soma_vetor = "soma de vetor", ordenacao = "ordenação",
+           busca_binaria = "busca", grafo = "busca em grafo", fibonacci = "Fibonacci",
+           fatorial = "fatorial", mdc = "MDC", camada_densa = "matrizes",
+           regressao_linear = "regressão linear", perceptron = "perceptron",
+           mlp_xor = "rede neural (XOR)")
 base  <- na_base(dados) |> arrange(match(programa, ORDEM), n, roi, cpu)
 # visão geral: da camada densa, só o tamanho N = 64
 geral <- base |> filter(is.na(n) | n == 64) |>
-  mutate(rotulo = if_else(is.na(n), programa, paste0(programa, " (N=", n, ")")))
+  mutate(rotulo = if_else(is.na(n), NOMES[programa], paste0(NOMES[programa], " (N=", n, ")")))
 rois  <- geral |> filter(roi > 0) |> arrange(match(programa, ORDEM), roi, cpu) |>
   mutate(rotulo_roi = paste0(rotulo, ": ", regiao),
          rotulo_roi = factor(rotulo_roi, levels = unique(rotulo_roi)))
@@ -170,7 +175,7 @@ MEM <- c(ciclos_por_mac = "ciclos por multiplicação-acumulação",
 por_mac <- function(d) mutate(d, retidas_por_mac = cargas_retidas / n^3)
 d5 <- base |> filter(programa == "camada_densa", cpu == "o3", roi > 0) |> por_mac()
 salvar(linhas(d5, n, MEM, "N (matrizes N×N de double)", log2_x(c(16, 32, 64, 128))) +
-         labs(title = "Camada densa: mesma conta, três ordens de laço (CPU o3)",
+         labs(title = "Multiplicação de matrizes: mesma conta, três ordens de laço (CPU o3)",
               subtitle = paste("L1D = 32 KiB: com N = 32 as três matrizes cabem; com N = 64 já não.",
                                "Na i-k-j, o o3 retém cada leitura de Y até a escrita anterior terminar.",
                                sep = "\n")),
@@ -181,7 +186,7 @@ d6 <- dados |> filter(programa == "camada_densa", n == 64, cpu == "o3", roi > 0,
   mutate(l1d_kib = as.numeric(str_remove(l1d, "KiB"))) |> por_mac()
 if (n_distinct(d6$l1d_kib) > 1) {
   salvar(linhas(d6, l1d_kib, MEM, "tamanho da L1D (KiB)", log2_x(unique(d6$l1d_kib))) +
-           labs(title = "Camada densa (N = 64): variando o tamanho da L1D (CPU o3)"),
+           labs(title = "Multiplicação de matrizes (N = 64): variando o tamanho da L1D (CPU o3)"),
          "fig_varredura_l1d", w = 7.5, h = 3.3)
 } else message("sem varredura de L1D (rode `make varredura`)")
 

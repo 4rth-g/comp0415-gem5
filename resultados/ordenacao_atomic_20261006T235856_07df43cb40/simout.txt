@@ -1,0 +1,16 @@
+Global frequency set at 1000000000000 ticks per second
+Redirecting stdout to resultados/ordenacao_atomic_20261006T235856_07df43cb40/simout.txt
+Redirecting stderr to resultados/ordenacao_atomic_20261006T235856_07df43cb40/simerr.txt
+gem5 Simulator System.  https://www.gem5.org
+gem5 is copyrighted software; use the --copyright option for details.
+
+gem5 version 25.1.0.1
+gem5 compiled Sep 25 2026 02:41:57
+gem5 started Oct  7 2026 02:58:57
+gem5 executing on 28e253b7ce29, pid 1
+command line: /gem5/build/RISCV/gem5.opt --outdir=resultados/ordenacao_atomic_20261006T235856_07df43cb40 --redirect-stdout --redirect-stderr configs_local/se_run.py bin/ordenacao_riscv --cpu atomic --l1d 32KiB --l1i 32KiB --l2 256KiB --clk 1GHz
+
+info: Standard input is not a terminal, disabling listeners.
+>>> Rodando bin/ordenacao_riscv com CPU=atomic L1D=32KiB L1I=32KiB L2=256KiB clk=1GHz
+bubble: ordenado  quicksort: ordenado  mesmo resultado: sim  a[0]=849 a[255]=99649
+>>> Simulação concluída.

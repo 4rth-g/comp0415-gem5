@@ -57,6 +57,15 @@ fora_fib <- v("fibonacci", "programa inteiro", "atomic", "instrucoes") -
 soma_laco  <- v("soma_vetor", "cache quente", "atomic", "instrucoes")
 cd <- function(reg, cpu_, col) v("camada_densa", reg, cpu_, col, n_ = 64)
 mix <- read_csv(file.path(SAIDA, "mix.csv"), show_col_types = FALSE)
+fat_pilha <- mix |> filter(cpu == "atomic", programa == "fatorial", regiao == "recursivo (2000×)") |>
+  summarise(sum(qtd[grupo %in% c("leitura de memória", "escrita em memória")]) / sum(qtd)) |> pull()
+# divisões do MDC de Euclides: lidas do stats.txt (o metricas.csv agrupa as classes)
+source("../analise/funcoes.R", chdir = TRUE)
+div_euclides <- local({
+  ex <- base |> filter(programa == "mdc", cpu == "atomic", roi == 1) |> pull(execucao)
+  d <- ler_dumps(file.path("../resultados", ex, "stats.txt.gz"))
+  d$valor[d$dump == 2 & d$nome == paste0(PREFIXO_MIX, "IntDiv")]
+})
 fp <- mix |> filter(cpu == "atomic", roi > 0, programa %in% c("regressao_linear", "perceptron", "mlp_xor")) |>
   group_by(programa) |> summarise(fp = sum(qtd[grupo == "ponto flutuante"]) / sum(qtd))
 ```
@@ -87,7 +96,7 @@ Resumo
 :::
 
 ::: {custom-style="Abstract Text"}
-Este artigo apresenta o gem5, simulador de arquitetura de computadores de código aberto, e o seu uso para executar algoritmos básicos sobre a ISA RISC-V. Após situar o gem5 entre outros simuladores, descrevemos uma instalação reprodutível: o simulador, o compilador cruzado e as bibliotecas ficam fixados em um container, e uma mesma simulação produz estatísticas idênticas com motores de container diferentes. Oito programas — soma de vetor, ordenação, busca, Fibonacci e quatro exemplos de redes neurais — foram executados em quatro modelos de processador do gem5, medindo apenas as regiões de interesse de cada algoritmo. Os exemplos mostram o que um simulador revela e um computador real esconde: a inicialização do programa domina programas pequenos, o mesmo código roda com IPC de `r f(v("fibonacci", "recursivo", "timing", "ipc"))` a `r f(v("fibonacci", "recursivo", "o3", "ipc"))` conforme a microarquitetura, e, em uma camada densa de rede neural, a ordem de laço que melhor usa a cache é a mais lenta no processador fora de ordem, por causa da predição de dependências de memória. Link do vídeo: [LINK DO VÍDEO — até 10 minutos].
+Este artigo apresenta o gem5, simulador de arquitetura de computadores de código aberto, e o seu uso para executar algoritmos básicos sobre a ISA RISC-V. Após situar o gem5 entre outros simuladores, descrevemos uma instalação reprodutível: o simulador, o compilador cruzado e as bibliotecas ficam fixados em um container, e uma mesma simulação produz estatísticas idênticas com motores de container diferentes. Onze programas — oito algoritmos clássicos de programação (soma, ordenação, busca, busca em grafo, Fibonacci, fatorial, máximo divisor comum e multiplicação de matrizes) e três exemplos de redes neurais — foram executados em quatro modelos de processador do gem5, medindo apenas as regiões de interesse de cada algoritmo. Os exemplos mostram o que um simulador revela e um computador real esconde: o mesmo código roda com IPC de `r f(v("fibonacci", "recursivo", "timing", "ipc"))` a `r f(v("fibonacci", "recursivo", "o3", "ipc"))` conforme a microarquitetura; um algoritmo com menos instruções pode ser mais lento, por depender de divisões; e, na multiplicação de matrizes, a ordem de laço que melhor usa a cache é a mais lenta no processador fora de ordem, por causa da predição de dependências de memória. Link do vídeo: [LINK DO VÍDEO — até 10 minutos].
 :::
 
 # 1. Introdução
@@ -96,7 +105,7 @@ Todo programa executa sobre uma arquitetura: um conjunto de instruções (ISA), 
 
 Observar esses mecanismos em um processador real, porém, é difícil: o hardware não mostra o que acontece dentro do pipeline, contadores de desempenho são limitados e mudar o tamanho de uma cache exige outro chip. Simuladores de arquitetura resolvem isso: modelam o processador em software, permitem trocar qualquer parâmetro e registram cada evento interno. Por isso são a ferramenta central tanto da pesquisa em arquitetura quanto do seu ensino [@akram2019survey; @nikolic2009survey].
 
-Neste trabalho foi selecionado o gem5 [@binkert2011gem5; @lowepower2020gem5v20], simulador amplamente usado na pesquisa, com vários modelos de processador e suporte à ISA RISC-V [@waterman2019riscv]. As contribuições são três: (i) uma instalação reprodutível do gem5, com todas as versões fixadas e verificada com dois motores de container; (ii) oito exemplos básicos — quatro algoritmos clássicos de programação e quatro de redes neurais — executados em quatro modelos de processador, medindo só a região de interesse de cada algoritmo; e (iii) a análise do que o simulador mostra em cada exemplo, incluindo um resultado contraintuitivo sobre a interação entre cache e execução fora de ordem.
+Neste trabalho foi selecionado o gem5 [@binkert2011gem5; @lowepower2020gem5v20], simulador amplamente usado na pesquisa, com vários modelos de processador e suporte à ISA RISC-V [@waterman2019riscv]. As contribuições são três: (i) uma instalação reprodutível do gem5, com todas as versões fixadas e verificada com dois motores de container; (ii) onze exemplos básicos — oito algoritmos clássicos de programação e três de redes neurais — executados em quatro modelos de processador, medindo só a região de interesse de cada algoritmo; e (iii) a análise do que o simulador mostra em cada exemplo, incluindo um resultado contraintuitivo sobre a interação entre cache e execução fora de ordem.
 
 A Seção 2 apresenta simuladores de arquitetura e o funcionamento do gem5; a Seção 3, a instalação e a configuração; a Seção 4, os exemplos; as Seções 5 e 6, as conclusões e os trabalhos futuros. Todo o código, as simulações e a análise estão em um repositório público [LINK DO REPOSITÓRIO].
 
@@ -249,7 +258,7 @@ Um binário estático executa cerca de `r mil(fora_fib)` instruções fora do al
 
 # 4. Exemplos Básicos no Simulador
 
-Os oito programas da @tbl-programas cobrem algoritmos típicos de disciplinas de programação e quatro exemplos de redes neurais. Cada um foi executado nos quatro modelos de CPU; a @fig-instrucoes mostra por que medir só as ROIs é necessário.
+Os onze programas da @tbl-programas incluem oito algoritmos típicos de disciplinas de programação — soma, ordenação, busca, busca em grafo, Fibonacci, fatorial, máximo divisor comum e multiplicação de matrizes — e, ao final, três exemplos de redes neurais. Cada programa compara duas ou três versões do mesmo cálculo, escolhidas para isolar um mecanismo do processador; todos foram executados nos quatro modelos de CPU. A @fig-instrucoes mostra por que medir só as ROIs é necessário.
 
 ```{r}
 #| results: asis
@@ -258,37 +267,38 @@ largo()
 
 : Programas executados e o que cada um exercita no processador {#tbl-programas}
 
-| Programa | Regiões de interesse | O que exercita |
-|-------------------------------|-----------------------------------|---------------------------|
-| Soma de vetor (4096 inteiros) | cache fria; cache quente; ROI vazia | acesso sequencial à memória |
-| Bubble sort (256 inteiros) | vetor aleatório; vetor já ordenado | desvios condicionais |
-| Busca (2048 elementos, 500 consultas) | linear; binária | complexidade O(N) × O(log N) |
-| Fibonacci (n = 20) | recursivo; iterativo (2000 vezes) | chamadas de função e pilha |
+| Programa | Regiões de interesse comparadas | Mecanismo observado |
+|-----------------------------------|----------------------------------------|----------------------------|
+| Soma de vetor (4096 inteiros) | cache fria; cache quente; ROI vazia | pipeline e cache |
+| Ordenação (256 inteiros) | bubble sort aleatório; bubble sort já ordenado; quicksort | preditor de desvios; complexidade |
+| Busca (2048 elementos, 500 consultas) | linear; binária | complexidade × desvios |
+| Busca em largura (4096 vértices) | grade 64×64; grafo aleatório | localidade de memória |
+| Fibonacci (n = 20) | recursivo; iterativo (2000 vezes) | número de chamadas |
+| Fatorial (n = 20) | recursivo; iterativo (2000 vezes cada) | custo de uma chamada de função |
+| Máximo divisor comum (2000 pares) | Euclides (resto); binário (sem divisão) | latência da divisão |
+| Multiplicação de matrizes (N = 16 a 128) | ordens i-j-k; i-k-j; i-k-j com 4 k por vez | cache × dependência de memória |
 | Regressão linear | treino por gradiente descendente | ponto flutuante |
 | Perceptron | treino até convergir | desvio que depende do aprendizado |
 | Rede neural 2-4-1 (XOR) | treino com retropropagação | ponto flutuante e função exponencial |
-| Camada densa, Y = ReLU(XW + b) | três ordens de laço; N = 16 a 128 | hierarquia de memória |
 
 ```{r}
 #| results: asis
 estreito()
 ```
-
 
 ```{r}
 #| results: asis
 largo()
 ```
 
-![Instruções executadas no programa inteiro e só nas regiões de interesse (escala logarítmica). Nos programas pequenos, quase tudo é inicialização da biblioteca C.](`r fig("fig_instrucoes")`){#fig-instrucoes width=95%}
+![Instruções executadas no programa inteiro e só nas regiões de interesse (escala logarítmica). Nos programas pequenos, boa parte é inicialização da biblioteca C.](`r fig("fig_instrucoes")`){#fig-instrucoes width=95%}
 
 ```{r}
 #| results: asis
 estreito()
 ```
 
-
-## 4.1 Soma de vetor: o pipeline em ação
+## 4.1 Soma de vetor: o pipeline e a cache
 
 O laço da soma é compilado para apenas quatro instruções RISC-V (comprimidas, de 16 bits) por elemento:
 
@@ -313,12 +323,13 @@ largo()
 estreito()
 ```
 
-
 O exemplo também mostra o efeito da cache. Na primeira ROI, um buffer de 1 MiB é percorrido antes, expulsando o vetor das caches: cada linha de 64 bytes do vetor falta na L1 e na L2. No processador o3, essa soma leva `r mil(v("soma_vetor", "cache fria", "o3", "ciclos"))` ciclos; repetida logo em seguida, com o vetor já na L1, leva `r mil(v("soma_vetor", "cache quente", "o3", "ciclos"))` ciclos — as mesmas `r mil(soma_laco)` instruções.
 
-## 4.2 Ordenação: o preditor de desvios
+## 4.2 Ordenação: o preditor de desvios e a complexidade
 
-O bubble sort compara vizinhos e troca os que estão fora de ordem. Em um vetor aleatório, o desvio "troca ou não troca" é imprevisível; em um vetor já ordenado, o código executa as mesmas comparações, mas nunca troca. Processadores com pipeline tentam adivinhar o resultado de cada desvio para não esperar; quando erram, descartam as instruções buscadas no caminho errado [@smith1981branch]. A @fig-predicao mostra a taxa de erro do preditor em cada ROI: no vetor aleatório, o o3 erra `r pct(v("bubble_sort", "vetor aleatório", "o3", "erro_predicao"))` dos desvios condicionais e atinge IPC de `r f(v("bubble_sort", "vetor aleatório", "o3", "ipc"))`; no vetor ordenado, erra `r pct(v("bubble_sort", "vetor já ordenado", "o3", "erro_predicao"))` e atinge `r f(v("bubble_sort", "vetor já ordenado", "o3", "ipc"))`.
+O bubble sort compara vizinhos e troca os que estão fora de ordem. Em um vetor aleatório, o desvio "troca ou não troca" é imprevisível; em um vetor já ordenado, o código executa as mesmas comparações, mas nunca troca. Processadores com pipeline tentam adivinhar o resultado de cada desvio para não esperar; quando erram, descartam as instruções buscadas no caminho errado [@smith1981branch]. A @fig-predicao mostra a taxa de erro do preditor em cada ROI: no vetor aleatório, o o3 erra `r pct(v("ordenacao", "bubble sort (aleatório)", "o3", "erro_predicao"))` dos desvios condicionais; no vetor ordenado, `r pct(v("ordenacao", "bubble sort (já ordenado)", "o3", "erro_predicao"))`, e o mesmo código executa `r mil(v("ordenacao", "bubble sort (já ordenado)", "o3", "instrucoes"))` instruções em `r mil(v("ordenacao", "bubble sort (já ordenado)", "o3", "ciclos"))` ciclos, contra `r mil(v("ordenacao", "bubble sort (aleatório)", "o3", "ciclos"))` no aleatório.
+
+O quicksort ordena uma cópia do mesmo vetor aleatório com `r mil(v("ordenacao", "quicksort (aleatório)", "o3", "instrucoes"))` instruções, `r f(v("ordenacao", "bubble sort (aleatório)", "o3", "instrucoes") / v("ordenacao", "quicksort (aleatório)", "o3", "instrucoes"), 1)` vezes menos que o bubble sort — a diferença entre O(n²) e O(n log n) comparações. A partição, porém, decide a cada elemento para que lado do pivô ele vai, e o preditor erra `r pct(v("ordenacao", "quicksort (aleatório)", "o3", "erro_predicao"))` desses desvios; o ganho em ciclos no o3 é de `r f(v("ordenacao", "bubble sort (aleatório)", "o3", "ciclos") / v("ordenacao", "quicksort (aleatório)", "o3", "ciclos"), 1)` vezes.
 
 ```{r}
 #| results: asis
@@ -332,54 +343,29 @@ largo()
 estreito()
 ```
 
-
 ## 4.3 Busca linear e busca binária
 
 As duas buscas respondem às mesmas 500 consultas no mesmo vetor ordenado. A busca linear executa `r mil(v("busca_binaria", "busca linear", "o3", "instrucoes"))` instruções e a binária, `r mil(v("busca_binaria", "busca binária", "o3", "instrucoes"))` — `r round(v("busca_binaria", "busca linear", "o3", "instrucoes") / v("busca_binaria", "busca binária", "o3", "instrucoes"))` vezes menos, refletindo O(N) contra O(log N). O ganho em ciclos no o3, porém, é menor: `r round(v("busca_binaria", "busca linear", "o3", "ciclos") / v("busca_binaria", "busca binária", "o3", "ciclos"))` vezes. A busca linear tem desvios previsíveis e roda com IPC de `r f(v("busca_binaria", "busca linear", "o3", "ipc"))`; na binária, cada comparação decide para que lado seguir, o preditor erra `r pct(v("busca_binaria", "busca binária", "o3", "erro_predicao"))` dos desvios e o IPC cai para `r f(v("busca_binaria", "busca binária", "o3", "ipc"))`. A complexidade do algoritmo diz quantas instruções serão executadas; a microarquitetura diz quanto custa cada uma.
 
-## 4.4 Fibonacci recursivo e iterativo
+## 4.4 Busca em largura: localidade de memória
 
-A versão recursiva de Fibonacci(20) faz milhares de chamadas de função, com escritas e leituras na pilha a cada chamada; a iterativa calcula o mesmo valor com um laço de 20 passos (repetido 2000 vezes na ROI, para que as medidas sejam estáveis). A recursão executa `r mil(v("fibonacci", "recursivo", "o3", "instrucoes"))` instruções para um único valor, contra cerca de `r mil(v("fibonacci", "iterativo (2000×)", "o3", "instrucoes") / 2000)` por chamada da versão iterativa. Ainda assim, a recursão é o caso de maior IPC no o3, `r f(v("fibonacci", "recursivo", "o3", "ipc"))`: as chamadas são previsíveis e o processador sobrepõe instruções de várias chamadas.
+A busca em largura (BFS) percorre um grafo a partir de um vértice, visitando os vizinhos em ordem de distância. O mesmo código foi executado em dois grafos com 4096 vértices e quatro arestas por vértice, armazenados em listas de adjacência contíguas (cerca de 112 KiB, mais que a L1D): uma grade 64×64, em que os vizinhos de um vértice v são v ± 1 e v ± 64, e um grafo com vizinhos sorteados. As duas buscas executam praticamente o mesmo número de instruções (`r mil(v("grafo", "BFS na grade", "o3", "instrucoes"))` e `r mil(v("grafo", "BFS em grafo aleatório", "o3", "instrucoes"))`). Na grade, vértices vizinhos estão próximos na memória e cada linha de cache trazida é reaproveitada; no grafo aleatório, cada aresta leva a um ponto qualquer do vetor de distâncias. As faltas na L1D sobem de `r f(v("grafo", "BFS na grade", "o3", "mpki_l1d"), 1)` para `r f(v("grafo", "BFS em grafo aleatório", "o3", "mpki_l1d"), 1)` por mil instruções, e o o3 passa de IPC `r f(v("grafo", "BFS na grade", "o3", "ipc"))` para `r f(v("grafo", "BFS em grafo aleatório", "o3", "ipc"))` — `r f(v("grafo", "BFS em grafo aleatório", "o3", "ciclos") / v("grafo", "BFS na grade", "o3", "ciclos"), 1)` vezes mais ciclos para o mesmo algoritmo, só pela estrutura dos dados.
 
-## 4.5 Visão geral: o mesmo programa em microarquiteturas diferentes
+## 4.5 Recursão: Fibonacci e fatorial
 
-A @fig-ipc reúne o IPC de todas as ROIs nos três modelos de CPU que medem tempo. Em cada linha, o número de instruções é o mesmo; só muda a microarquitetura. O timing, que espera cada acesso à memória, fica abaixo de 1 em todos os casos. O minor, com pipeline em ordem, ganha onde há pouca dependência entre instruções, mas perde quando o preditor erra (perceptron, busca binária). O o3 chega a IPC de 3 a 5 quando há paralelismo entre instruções e fica perto de 1 quando os desvios são imprevisíveis. É exatamente o tipo de comparação que um simulador funcional não consegue fazer.
+A versão recursiva de Fibonacci(20) faz milhares de chamadas de função; a iterativa calcula o mesmo valor com um laço de 20 passos (repetido 2000 vezes na ROI, para que as medidas sejam estáveis). A recursão executa `r mil(v("fibonacci", "recursivo", "o3", "instrucoes"))` instruções para um único valor, contra cerca de `r mil(v("fibonacci", "iterativo (2000×)", "o3", "instrucoes") / 2000)` por chamada da versão iterativa: a diferença está no *número* de chamadas, que cresce exponencialmente.
 
-```{r}
-#| results: asis
-largo()
-```
+O fatorial isola o *custo* de cada chamada. As duas versões fazem exatamente as mesmas 19 multiplicações para calcular 20!; a recursiva acrescenta uma chamada e um retorno a cada passo, salvando o endereço de retorno e um registrador na pilha. Repetida 2000 vezes, a versão recursiva executa `r mil(v("fatorial", "recursivo (2000×)", "o3", "instrucoes"))` instruções e a iterativa, `r mil(v("fatorial", "iterativo (2000×)", "o3", "instrucoes"))`: cerca de `r round((v("fatorial", "recursivo (2000×)", "o3", "instrucoes") - v("fatorial", "iterativo (2000×)", "o3", "instrucoes")) / (2000 * 19))` instruções a mais por chamada, das quais `r pct(fat_pilha, 0)` são leituras e escritas na pilha. Ainda assim, o o3 executa as duas versões com IPC alto (`r f(v("fatorial", "recursivo (2000×)", "o3", "ipc"))` e `r f(v("fatorial", "iterativo (2000×)", "o3", "ipc"))`): as chamadas e retornos são previsíveis, e o processador sobrepõe instruções de várias chamadas.
 
-![IPC de cada região de interesse nos modelos timing, minor e o3. O modelo atomic, funcional, não aparece porque seus ciclos não medem tempo.](`r fig("fig_ipc")`){#fig-ipc width=95%}
+## 4.6 Máximo divisor comum: a latência da divisão
 
-```{r}
-#| results: asis
-estreito()
-```
+O algoritmo de Euclides calcula o MDC por restos sucessivos: cada passo executa uma divisão inteira (a instrução `remu`), e o passo seguinte precisa do resultado dela. O MDC binário chega ao mesmo resultado só com deslocamentos e subtrações, ao custo de mais passos. Para os mesmos 2000 pares, Euclides executa `r mil(v("mdc", "Euclides (resto)", "o3", "instrucoes"))` instruções, das quais `r mil(div_euclides)` são divisões, e o binário, `r mil(v("mdc", "binário (sem divisão)", "o3", "instrucoes"))` — `r f(v("mdc", "binário (sem divisão)", "o3", "instrucoes") / v("mdc", "Euclides (resto)", "o3", "instrucoes"), 1)` vezes mais.
 
+Este exemplo mostra que a escolha do modelo de CPU muda a conclusão. O atomic e o timing contam cada instrução como um ciclo e não modelam a latência das unidades funcionais: neles, Euclides é `r f(v("mdc", "binário (sem divisão)", "timing", "ciclos") / v("mdc", "Euclides (resto)", "timing", "ciclos"), 1)` vezes mais rápido. No o3, a unidade de divisão tem latência de 20 ciclos (valor do `config.ini`) e, como cada passo depende do resto anterior, essa espera não pode ser escondida: Euclides roda com IPC de `r f(v("mdc", "Euclides (resto)", "o3", "ipc"))` e passa a ser *mais lento* que o binário (`r mil(v("mdc", "Euclides (resto)", "o3", "ciclos"))` contra `r mil(v("mdc", "binário (sem divisão)", "o3", "ciclos"))` ciclos).
 
-## 4.6 Redes neurais
+## 4.7 Multiplicação de matrizes: cache ou dependência de memória?
 
-Os três exemplos de redes neurais implementam o treino de modelos clássicos: regressão linear por gradiente descendente, perceptron [@rosenblatt1958perceptron] e uma rede de uma camada oculta que aprende a função XOR com retropropagação [@rumelhart1986backprop]. Cada um foi conferido contra uma implementação de referência em Python: perdas e pesos finais coincidem até a sexta casa decimal. A diferença mais visível em relação aos exemplos clássicos está no tipo das instruções (@fig-mix): de `r pct(min(fp$fp), 0)` a `r pct(max(fp$fp), 0)` das instruções do treino são de ponto flutuante, contra nenhuma nos algoritmos clássicos.
-
-```{r}
-#| results: asis
-largo()
-```
-
-![Mix de instruções executadas em cada região de interesse.](`r fig("fig_mix")`){#fig-mix width=95%}
-
-```{r}
-#| results: asis
-estreito()
-```
-
-
-O perceptron ilustra um desvio que depende do aprendizado: a atualização dos pesos só acontece quando o modelo erra a amostra. Nas primeiras épocas o modelo erra muito e o desvio é imprevisível; perto da convergência quase nunca é tomado. O minor, sensível a erros de predição, roda o treino com IPC de `r f(v("perceptron", "treino", "minor", "ipc"))`, abaixo do timing (`r f(v("perceptron", "treino", "timing", "ipc"))`); o o3 chega a `r f(v("perceptron", "treino", "o3", "ipc"))`.
-
-## 4.7 Camada densa: cache ou dependência de memória?
-
-A inferência de uma camada densa, Y = ReLU(XW + b), é um produto de matrizes. O mesmo cálculo foi escrito em três ordens de laço, com resultado idêntico bit a bit:
+A multiplicação de matrizes é também o núcleo da inferência de uma camada densa de rede neural, Y = ReLU(XW + b), que foi o cálculo implementado. O mesmo produto foi escrito em três ordens de laço, com resultado idêntico bit a bit:
 
 - **i-j-k**: acumula cada elemento de Y em um registrador, percorrendo W por coluna — a cada passo, salta N × 8 bytes na memória;
 - **i-k-j**: percorre W e Y por linha, acesso sequencial e amigável à cache [@lam1991blocked], mas lê Y[i][j] logo depois de tê-lo gravado;
@@ -394,7 +380,7 @@ largo()
 
 ```{r}
 #| label: tbl-camada
-#| tbl-cap: "Camada densa com N = 64: custo por multiplicação-acumulação e eventos de memória"
+#| tbl-cap: "Multiplicação de matrizes com N = 64: custo por multiplicação-acumulação e eventos de memória"
 regs <- c("ordem i-j-k", "ordem i-k-j", "ordem i-k-j (4 k por vez)")
 tibble(
   `Ordem` = c("i-j-k", "i-k-j", "i-k-j, 4 k por vez"),
@@ -421,7 +407,7 @@ O terceiro laço funciona como experimento de controle: mantém o mesmo padrão 
 largo()
 ```
 
-![Camada densa no o3, variando o tamanho N das matrizes: custo por multiplicação-acumulação, faltas na L1D e leituras retidas pelo preditor de dependências.](`r fig("fig_camada_n")`){#fig-camada width=95%}
+![Multiplicação de matrizes no o3, variando o tamanho N: custo por multiplicação-acumulação, faltas na L1D e leituras retidas pelo preditor de dependências.](`r fig("fig_camada_n")`){#fig-camada width=95%}
 
 ```{r}
 #| results: asis
@@ -434,17 +420,48 @@ estreito()
 largo()
 ```
 
-![Camada densa com N = 64 no o3, variando o tamanho da cache L1 de dados.](`r fig("fig_varredura_l1d")`){#fig-varredura width=95%}
+![Multiplicação de matrizes com N = 64 no o3, variando o tamanho da cache L1 de dados.](`r fig("fig_varredura_l1d")`){#fig-varredura width=95%}
 
 ```{r}
 #| results: asis
 estreito()
 ```
 
+## 4.8 Visão geral: o mesmo programa em microarquiteturas diferentes
+
+A @fig-ipc reúne o IPC de todas as ROIs nos três modelos de CPU que medem tempo. Em cada linha, o número de instruções é o mesmo; só muda a microarquitetura. O timing, que espera cada acesso à memória, fica abaixo de 1 em todos os casos. O minor, com pipeline em ordem, ganha onde há pouca dependência entre instruções, mas perde quando o preditor erra (quicksort, busca binária, MDC binário). O o3 chega a IPC de 3 a 5 quando há paralelismo entre instruções e cai para perto de 1 — ou menos, no MDC de Euclides — quando os desvios são imprevisíveis, os dados não estão na cache ou cada instrução espera uma operação longa. É exatamente o tipo de comparação que um simulador funcional não consegue fazer.
+
+```{r}
+#| results: asis
+largo()
+```
+
+![IPC de cada região de interesse nos modelos timing, minor e o3. O modelo atomic, funcional, não aparece porque seus ciclos não medem tempo.](`r fig("fig_ipc")`){#fig-ipc width=95%}
+
+```{r}
+#| results: asis
+estreito()
+```
+
+## 4.9 Uma aplicação moderna: redes neurais
+
+Por fim, três programas implementam o treino de modelos clássicos de aprendizado de máquina: regressão linear por gradiente descendente, perceptron [@rosenblatt1958perceptron] e uma rede de uma camada oculta que aprende a função XOR com retropropagação [@rumelhart1986backprop]. Cada um foi conferido contra uma implementação de referência em Python: perdas e pesos finais coincidem até a sexta casa decimal. A diferença mais visível em relação aos algoritmos clássicos está no tipo das instruções (@fig-mix): de `r pct(min(fp$fp), 0)` a `r pct(max(fp$fp), 0)` das instruções do treino são de ponto flutuante, contra nenhuma nos clássicos, exceto a multiplicação de matrizes. O perceptron também ilustra um desvio que depende do aprendizado: a atualização dos pesos só acontece quando o modelo erra a amostra, o que é frequente nas primeiras épocas e raro perto da convergência.
+
+```{r}
+#| results: asis
+largo()
+```
+
+![Mix de instruções executadas em cada região de interesse.](`r fig("fig_mix")`){#fig-mix width=95%}
+
+```{r}
+#| results: asis
+estreito()
+```
 
 # 5. Conclusões
 
-Este trabalho apresentou o gem5, justificou sua escolha frente a outros simuladores e mostrou, com oito programas, o que ele revela sobre a execução de algoritmos em um processador RISC-V. O mais significativo foi ver na prática conceitos que, na teoria, aparecem separados: o mesmo binário, com as mesmas instruções, rodando com IPC de `r f(v("fibonacci", "recursivo", "timing", "ipc"))` a `r f(v("fibonacci", "recursivo", "o3", "ipc"))` conforme a microarquitetura; os erros do preditor de desvios quase dobrando o tempo do bubble sort; a complexidade O(log N) da busca binária pagando parte do ganho em desvios imprevisíveis. O resultado mais surpreendente foi a camada densa: a ordem de laço que a teoria de cache recomenda é a mais lenta no processador fora de ordem, e só as estatísticas internas do simulador — leituras retidas pelo preditor de dependências — permitiram explicar por quê e confirmar a explicação com um experimento de controle.
+Este trabalho apresentou o gem5, justificou sua escolha frente a outros simuladores e mostrou, com onze programas, o que ele revela sobre a execução de algoritmos em um processador RISC-V. O mais significativo foi ver na prática conceitos que, na teoria, aparecem separados: o mesmo binário, com as mesmas instruções, rodando com IPC de `r f(v("fibonacci", "recursivo", "timing", "ipc"))` a `r f(v("fibonacci", "recursivo", "o3", "ipc"))` conforme a microarquitetura; os erros do preditor de desvios quase dobrando o tempo do bubble sort; a complexidade O(log N) da busca binária pagando parte do ganho em desvios imprevisíveis; a mesma busca em grafo levando mais que o dobro do tempo só por causa da disposição dos dados na memória. Dois resultados contrariaram a intuição. No MDC, os modelos simples de CPU apontam o algoritmo de Euclides como o mais rápido, e o modelo detalhado mostra o contrário, porque a latência da divisão só aparece nele. E, na multiplicação de matrizes, a ordem de laço que a teoria de cache recomenda é a mais lenta no processador fora de ordem; só as estatísticas internas do simulador — leituras retidas pelo preditor de dependências — permitiram explicar por quê e confirmar a explicação com um experimento de controle.
 
 As principais dificuldades foram práticas. A compilação do gem5 leva mais de uma hora e depende de muitas bibliotecas, o que motivou o uso de containers. A inicialização da biblioteca C domina programas pequenos, o que exigiu marcar as regiões de interesse. E nem todo experimento funcionou: zerar periodicamente o preditor de dependências do gem5, a primeira tentativa de controle, não alterou nenhuma estatística, porque a dependência volta a ser prevista logo após cada limpeza.
 

@@ -1,0 +1,16 @@
+Global frequency set at 1000000000000 ticks per second
+Redirecting stdout to resultados/mdc_atomic_20261006T235843_a2247383e6/simout.txt
+Redirecting stderr to resultados/mdc_atomic_20261006T235843_a2247383e6/simerr.txt
+gem5 Simulator System.  https://www.gem5.org
+gem5 is copyrighted software; use the --copyright option for details.
+
+gem5 version 25.1.0.1
+gem5 compiled Sep 25 2026 02:41:57
+gem5 started Oct  7 2026 02:58:45
+gem5 executing on 7db0e7209ec2, pid 1
+command line: /gem5/build/RISCV/gem5.opt --outdir=resultados/mdc_atomic_20261006T235843_a2247383e6 --redirect-stdout --redirect-stderr configs_local/se_run.py bin/mdc_riscv --cpu atomic --l1d 32KiB --l1i 32KiB --l2 256KiB --clk 1GHz
+
+info: Standard input is not a terminal, disabling listeners.
+>>> Rodando bin/mdc_riscv com CPU=atomic L1D=32KiB L1I=32KiB L2=256KiB clk=1GHz
+2000 pares: soma dos MDCs Euclides=13130 binario=13130 (iguais)
+>>> Simulação concluída.
