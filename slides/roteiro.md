@@ -3,9 +3,7 @@
 Um bloco por slide de `slides/slides.html` (ou `slides.pdf`). Tempo total
 previsto: **≈ 9 min 40 s**, com margem para respirar.
 
-- **Quem fala**: sugestão de divisão. Arthur cobre o simulador e a
-  instalação (slides 1–11); Renato, os exemplos e as conclusões (12–20).
-  Troquem à vontade.
+- **Narração**: Arthur grava sozinho, em nome da dupla (Arthur e Renato).
 - **Fala**: texto para guiar, não para ler palavra por palavra. Os números em
   **negrito** estão no slide; não é preciso decorar.
 - **Na tela**: o que mostrar ou apontar. Teclas do revealjs: → avança,
@@ -17,15 +15,15 @@ mostra o simulador de fato funcionando, que é o que o modelo do trabalho pede.
 
 ---
 
-## Bloco 1 · Capa — 0:00 (15 s) · Arthur
+## Bloco 1 · Capa — 0:00 (15 s)
 
-> Olá! Eu sou o Arthur, e com o Renato apresentamos o trabalho de Arquitetura
-> de Computadores: como usar o simulador gem5 para rodar algoritmos sobre a
+> Olá! Eu sou o Arthur, e este é o trabalho de Arquitetura de Computadores
+> que fiz com o Renato: como usar o simulador gem5 para rodar algoritmos sobre a
 > ISA RISC-V, e o que ele revela sobre o processador.
 
 **Na tela:** capa.
 
-## Bloco 2 · Por que simular um processador? — 0:15 (30 s) · Arthur
+## Bloco 2 · Por que simular um processador? — 0:15 (30 s)
 
 > Testar uma ideia de arquitetura em silício é **caro**. O hardware é
 > **opaco**: não mostra o que acontece dentro do pipeline. E é **fixo**: para
@@ -35,7 +33,7 @@ mostra o simulador de fato funcionando, que é o que o modelo do trabalho pede.
 
 **Na tela:** as três palavras; avançar para a frase de baixo.
 
-## Bloco 3 · Por que o gem5? — 0:45 (30 s) · Arthur
+## Bloco 3 · Por que o gem5? — 0:45 (30 s)
 
 > Existem vários simuladores. O QEMU é rápido, mas só funcional: não mede
 > tempo. O Ripes e o MARS são ótimos para ensino, mas simulam um processador
@@ -46,7 +44,7 @@ mostra o simulador de fato funcionando, que é o que o modelo do trabalho pede.
 
 **Na tela:** apontar a linha do gem5 (laranja).
 
-## Bloco 4 · Como o gem5 funciona — 1:15 (35 s) · Arthur
+## Bloco 4 · Como o gem5 funciona — 1:15 (35 s)
 
 > Por dentro, o gem5 é um simulador orientado a eventos, com o tempo contado em
 > ticks de um picossegundo. Cada componente — CPU, caches, barramentos,
@@ -57,7 +55,7 @@ mostra o simulador de fato funcionando, que é o que o modelo do trabalho pede.
 
 **Na tela:** percorrer o diagrama da esquerda para a direita.
 
-## Bloco 5 · Quatro CPUs, quatro níveis de detalhe — 1:50 (30 s) · Arthur
+## Bloco 5 · Quatro CPUs, quatro níveis de detalhe — 1:50 (30 s)
 
 > O gem5 tem quatro modelos de processador que executam exatamente as mesmas
 > instruções: o *atomic*, funcional; o *timing*, que espera a memória; o
@@ -67,7 +65,7 @@ mostra o simulador de fato funcionando, que é o que o modelo do trabalho pede.
 
 **Na tela:** apontar as medianas, de cima para baixo.
 
-## Bloco 6 · Dentro do o3 — 2:20 (35 s) · Arthur
+## Bloco 6 · Dentro do o3 — 2:20 (35 s)
 
 > O o3 é o mais completo, e os nossos resultados dependem dele. A instrução
 > passa por *fetch*, *decode*, *rename* e *dispatch*; espera na *issue queue*
@@ -80,7 +78,7 @@ mostra o simulador de fato funcionando, que é o que o modelo do trabalho pede.
 
 **Na tela:** seguir a linha central; no fim, apontar as duas caixas laranja.
 
-## Bloco 7 · O sistema simulado — 2:55 (25 s) · Arthur
+## Bloco 7 · O sistema simulado — 2:55 (25 s)
 
 > O sistema que montamos: um núcleo RISC-V de 64 bits a 1 GHz, caches L1 de
 > 32 KiB para instruções e para dados, L2 de 256 KiB e memória DDR3. Com a
@@ -89,7 +87,7 @@ mostra o simulador de fato funcionando, que é o que o modelo do trabalho pede.
 
 **Na tela:** diagrama à esquerda; depois o trecho de código.
 
-## Bloco 8 · Instalação reprodutível — 3:20 (35 s) · Arthur
+## Bloco 8 · Instalação reprodutível — 3:20 (35 s)
 
 > Instalar o gem5 não é trivial: a compilação levou **76 minutos** e depende
 > de muitas bibliotecas. Para qualquer pessoa obter o mesmo simulador, fizemos
@@ -101,7 +99,7 @@ mostra o simulador de fato funcionando, que é o que o modelo do trabalho pede.
 
 **Na tela:** percorrer o fluxo; depois os dois números.
 
-## Bloco 9 · O gem5 rodando — 3:55 (30 s) · Arthur
+## Bloco 9 · O gem5 rodando — 3:55 (30 s)
 
 > É assim que o gem5 aparece: no terminal. Ele carrega o programa, roda, o
 > programa imprime a soma, e as estatísticas vão para o `stats.txt`: aqui,
@@ -120,7 +118,7 @@ zcat (ls -d resultados/soma_vetor_o3_* | tail -1)/stats.txt.gz | grep -E "^simIn
 > Vou rodar a soma de vetor no o3… em poucos segundos ele termina, e aqui
 > estão as instruções e o IPC de cada trecho.
 
-## Bloco 10 · Medindo só o algoritmo — 4:25 (30 s) · Arthur
+## Bloco 10 · Medindo só o algoritmo — 4:25 (30 s)
 
 > Um detalhe de método que fez toda a diferença. Um binário estático executa
 > mais de cem mil instruções só inicializando a biblioteca C. Na soma de vetor,
@@ -132,7 +130,7 @@ zcat (ls -d resultados/soma_vetor_o3_* | tail -1)/stats.txt.gz | grep -E "^simIn
 **Na tela:** o código à esquerda; depois o gráfico (laranja = programa
 inteiro, azul = só a região de interesse).
 
-## Bloco 11 · O pipeline em ação — 4:55 (30 s) · Arthur
+## Bloco 11 · O pipeline em ação — 4:55 (30 s)
 
 > E dá para ver o pipeline do o3 instrução por instrução. Cada linha é uma
 > instrução do laço da soma; as cores são os estágios. A cada ciclo, quatro
@@ -143,15 +141,15 @@ inteiro, azul = só a região de interesse).
 **Na tela:** seguir uma linha da esquerda para a direita; depois mostrar a
 "escada" das linhas.
 
-## Bloco 12 · Exemplos — 5:25 (5 s) · Renato
+## Bloco 12 · Exemplos — 5:25 (5 s)
 
 > Agora, os exemplos.
 
 **Na tela:** slide escuro. Passar logo.
 
-## Bloco 13 · Ordenação: o branch predictor — 5:30 (35 s) · Renato
+## Bloco 13 · Ordenação: o branch predictor — 5:30 (35 s)
 
-> Eu sou o Renato. Primeiro, a ordenação. O mesmo bubble sort, rodando sobre
+> Primeiro, a ordenação. O mesmo bubble sort, rodando sobre
 > um vetor aleatório e depois sobre o vetor já ordenado: no o3, o aleatório
 > leva **138 mil** ciclos e o ordenado, **100 mil**, com o mesmo código. A
 > diferença é o *branch predictor*: no aleatório ele erra **3,7%** dos
@@ -161,7 +159,7 @@ inteiro, azul = só a região de interesse).
 
 **Na tela:** comparar as barras do o3 (amarelo); depois a linha de baixo.
 
-## Bloco 14 · Busca em grafo: localidade de memória — 6:05 (30 s) · Renato
+## Bloco 14 · Busca em grafo: localidade de memória — 6:05 (30 s)
 
 > A mesma busca em largura, em dois grafos do mesmo tamanho: uma grade, em que
 > os vizinhos ficam perto na memória, e um grafo aleatório. O número de
@@ -171,7 +169,7 @@ inteiro, azul = só a região de interesse).
 
 **Na tela:** barras do o3 (60 → 155).
 
-## Bloco 15 · MDC: o modelo de CPU muda a conclusão — 6:35 (40 s) · Renato
+## Bloco 15 · MDC: o modelo de CPU muda a conclusão — 6:35 (40 s)
 
 > Este é um dos resultados mais interessantes. O MDC de Euclides usa uma
 > divisão por passo; a versão binária usa só deslocamentos e subtrações, e
@@ -184,7 +182,7 @@ inteiro, azul = só a região de interesse).
 **Na tela:** primeiro o painel *timing* (172 contra 729); depois o painel
 *o3* (738 contra 706).
 
-## Bloco 16 · Matrizes: cache ou dependência de memória? — 7:15 (45 s) · Renato
+## Bloco 16 · Matrizes: cache ou dependência de memória? — 7:15 (45 s)
 
 > A multiplicação de matrizes, que é o núcleo de uma camada de rede neural,
 > em três ordens de laço. A ordem i-k-j é a que a teoria de cache recomenda: e
@@ -199,7 +197,7 @@ inteiro, azul = só a região de interesse).
 **Na tela:** painel da esquerda (custo: azul no alto, plano); depois o da
 direita (*loads* retidos).
 
-## Bloco 17 · Uma versão em relação à outra — 8:00 (25 s) · Renato
+## Bloco 17 · Uma versão em relação à outra — 8:00 (25 s)
 
 > Este gráfico resume todas as comparações. O losango é quanto uma versão
 > executa de instruções em relação à outra; os círculos, quanto ela leva de
@@ -210,7 +208,7 @@ direita (*loads* retidos).
 
 **Na tela:** apontar a linha "igual"; depois as linhas BFS e MDC.
 
-## Bloco 18 · E as redes neurais? — 8:25 (25 s) · Renato
+## Bloco 18 · E as redes neurais? — 8:25 (25 s)
 
 > Também rodamos três exemplos de redes neurais — regressão linear, perceptron
 > e uma rede que aprende XOR — conferidos contra Python até a sexta casa
@@ -220,7 +218,7 @@ direita (*loads* retidos).
 
 **Na tela:** barras laranja de baixo.
 
-## Bloco 19 · O que o simulador mostrou — 8:50 (35 s) · Renato
+## Bloco 19 · O que o simulador mostrou — 8:50 (35 s)
 
 > Para fechar, quatro lições.
 > Um: o desempenho vem de **como** a microarquitetura executa, não só de
@@ -233,7 +231,7 @@ direita (*loads* retidos).
 
 **Na tela:** avançar item a item (cada → mostra um).
 
-## Bloco 20 · Obrigado — 9:25 (15 s) · Arthur e Renato
+## Bloco 20 · Obrigado — 9:25 (15 s)
 
 > Todo o código, as simulações, o artigo e estes slides estão no repositório
 > público. Obrigado!
