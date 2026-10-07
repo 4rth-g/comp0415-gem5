@@ -373,4 +373,4 @@ gem5 · RISC-V · 11 programas · 4 CPUs · 60 simulações
 
 <br>
 
-[\[LINK DO REPOSITÓRIO\]]{.discreto}
+[github.com/4rth-g/comp0415-gem5](https://github.com/4rth-g/comp0415-gem5){.discreto}

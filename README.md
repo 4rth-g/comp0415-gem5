@@ -12,12 +12,18 @@ minha máquina funciona".
 
 | Repositório | Conteúdo | Muda |
 |---|---|---|
-| [`gem5-build`](../gem5-build) | build do gem5 (commit fixado) + imagem `gem5-riscv:local` | uma vez |
-| **este** | exemplos, config de simulação, execução, análise | sempre |
+| [`gem5-build`](https://github.com/4rth-g/arquitetura-gem5-riscv) | build do gem5 (commit fixado) + imagem `gem5-riscv:local` | uma vez |
+| **este** ([`comp0415-gem5`](https://github.com/4rth-g/comp0415-gem5)) | exemplos, config de simulação, execução, análise, artigo, slides | sempre |
 
-Os dois ficam **lado a lado** (`~/src/gem5-build` e `~/src/comp0415-gem5`);
-o `simular.sh` procura o gem5 em `../gem5-build/gem5`. Outro local:
-`GEM5_DIR=/caminho/do/gem5 ./simular.sh ...`.
+Os dois ficam **lado a lado**, e o do build com o nome de pasta `gem5-build`
+(o `simular.sh` procura o gem5 em `../gem5-build/gem5`):
+
+```bash
+git clone https://github.com/4rth-g/arquitetura-gem5-riscv.git gem5-build
+git clone https://github.com/4rth-g/comp0415-gem5.git
+```
+
+Outro local: `GEM5_DIR=/caminho/do/gem5 ./simular.sh ...`.
 
 ## Estrutura
 

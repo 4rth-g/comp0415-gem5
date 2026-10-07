@@ -224,7 +224,7 @@ Observar esses mecanismos em um processador real, porém, é difícil: o hardwar
 
 Neste trabalho foi selecionado o gem5 [@binkert2011gem5; @lowepower2020gem5v20], simulador amplamente usado na pesquisa, com vários modelos de processador e suporte à ISA RISC-V [@waterman2019riscv]. As contribuições são três: (i) uma instalação reprodutível do gem5, com todas as versões fixadas e verificada com dois motores de container; (ii) onze exemplos básicos — oito algoritmos clássicos de programação e três de redes neurais — executados em quatro modelos de processador, medindo só a região de interesse de cada algoritmo; e (iii) a análise do que o simulador mostra em cada exemplo, incluindo um resultado contraintuitivo sobre a interação entre cache e execução fora de ordem.
 
-A Seção 2 apresenta simuladores de arquitetura e o funcionamento do gem5; a Seção 3, a instalação e a configuração; a Seção 4, os exemplos; as Seções 5 e 6, as conclusões e os trabalhos futuros. Todo o código, as simulações e a análise estão em um repositório público \[LINK DO REPOSITÓRIO\].
+A Seção 2 apresenta simuladores de arquitetura e o funcionamento do gem5; a Seção 3, a instalação e a configuração; a Seção 4, os exemplos; as Seções 5 e 6, as conclusões e os trabalhos futuros. Todo o código, as simulações e a análise estão em um repositório público: <https://github.com/4rth-g/comp0415-gem5>.
 
 # 2. O Simulador Selecionado: gem5
 
